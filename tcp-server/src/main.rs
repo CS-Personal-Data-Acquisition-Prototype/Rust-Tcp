@@ -14,243 +14,52 @@
 //! - [ ] Multithread with pooling
 //! - [ ] Database interface
 //!
+mod http;
+mod models;
 
-use core::str;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::net::{TcpListener, TcpStream};
-use url::form_urlencoded;
+use std::str;
 
-//should create a series of interconnected state machines using enums, states, and matches
-/*EG
-type Prog = Vec<Command>;
+use http::{HttpMethod, HttpRequest, HttpResponse, HttpStatus};
 
-enum Type {
-    Int(i32),
-    String(String),
-    Address(Address),
-}
-enum Command {
-    LD(Type),
-    ADD,
-    MULT,
-    DUP
-}*/
+const AUTHENTICATION_ENDPOINT: &str = "/authentication";
+const USER_ENDPOINT: &str = "/users";
+const SENSOR_ENDPOINT: &str = "/sensors";
+const SESSION_ENDPOINT: &str = "/sessions";
+const SESSION_SENSOR_ENDPOINT: &str = "/sessions-sensors";
+const SESSION_SENSOR_DATA_ENDPOINT: &str = "/sessions-sensors-data";
 
 //Result generalization, could replace String with custom error enum
 type Result<T> = core::result::Result<T, String>;
 
-//methods the server allows along with a catchall Error
-enum HttpMethod {
-    Get,
-    Post,
-    Put,
-    Delete,
-    Error,
-}
-
-#[allow(unused)]
-impl HttpMethod {
-    //const of all possible types to all iteration over all possible values
-    const ALL_TYPES: [HttpMethod; 5] =
-        [Self::Get, Self::Post, Self::Put, Self::Delete, Self::Error];
-
-    //Returns the
-    fn to_string(&self) -> String {
-        match self {
-            Self::Get => "GET".to_string(),
-            Self::Post => "POST".to_string(),
-            Self::Put => "PUT".to_string(),
-            Self::Delete => "DELETE".to_string(),
-            Self::Error => "ERROR".to_string(),
-        }
-    }
-
-    fn from_string(string: String) -> Self {
-        for method in Self::ALL_TYPES {
-            if string.starts_with(&method.to_string()) {
-                return method;
-            }
-        }
-        HttpMethod::Error
-    }
-
-    fn to_bytes(&self) -> Vec<u8> {
-        self.to_string().into_bytes()
-    }
-
-    fn from_bytes(bytes: &[u8]) -> Self {
-        for method in Self::ALL_TYPES {
-            if bytes.starts_with(&method.to_bytes()) {
-                return method;
-            }
-        }
-        HttpMethod::Error
-    }
-}
-
-struct HttpRequest {
-    method: HttpMethod,
-    path: String,
-    parameters: Option<Vec<(String, String)>>,
-    body: Option<String>,
-}
-
-#[allow(unused)]
-impl HttpRequest {
-    const DEFAULT_404_HTML: &str = "<html><body><h1>404 Not Found</h1></body></html>"; //TODO: Move to HttpResponse
-
-    fn to_string(&self) -> String {
-        format!(
-            "{} {}{} HTTP/1.1\r\nContent Length: {}\r\n\r\n{}",
-            self.method.to_string(),
-            self.path,
-            self.parameters_to_string(),
-            self.body.as_ref().unwrap_or(&String::new()).len(),
-            self.body.as_ref().unwrap_or(&String::new()),
-        )
-    }
-
-    //Returns a String in the format of "?key1=val1&keyN=valN" or "" if parameters is empty
-    fn parameters_to_string(&self) -> String {
-        self.parameters
-            .as_ref()
-            .filter(|params| !params.is_empty())
-            .map(|params| {
-                format!(
-                    "?{}",
-                    params
-                        .iter()
-                        .map(|(key, val)| format!("{key}={val}"))
-                        .collect::<Vec<String>>()
-                        .join("&")
-                )
-            })
-            .unwrap_or_default()
-    }
-
-    fn to_bytes(&self) -> Vec<u8> {
-        self.to_string().into_bytes()
-    }
-
-    fn from_request_bytes(buffer: &[u8]) -> Self {
-        //split the request on delimiter to separate the header and body, on err assume no body and set whole buffer to header
-        let delimiter = b"\r\n\r\n";
-        let (header, body) = buffer.split_at(
-            buffer
-                .windows(delimiter.len())
-                .position(|window| window == delimiter)
-                .unwrap_or_else(|| buffer.len()),
-        );
-
-        //split the header on spaces ' '
-        let (method, whole_path) = {
-            let mut split = header.splitn(3, |&byte| byte == b' ');
-            (
-                HttpMethod::from_bytes(split.next().unwrap_or_default()),
-                split.next().unwrap_or_default(),
-            )
-        };
-
-        let (path, parameters): (String, Option<Vec<(String, String)>>) = {
-            //split array at pos of '?' or end of byte array
-            let (path_bytes, query_string_bytes) = whole_path.split_at(
-                whole_path
-                    .iter()
-                    .position(|&b| b == b'?')
-                    .unwrap_or(whole_path.len()),
-            );
-
-            (
-                str::from_utf8(path_bytes).unwrap_or_default().to_string(),
-                Some(
-                    form_urlencoded::parse(if query_string_bytes.is_empty() {
-                        query_string_bytes
-                    } else {
-                        &query_string_bytes[1..]
-                    })
-                    .into_owned()
-                    .collect(),
-                ),
-            )
-        };
-
-        HttpRequest {
-            method,
-            path,
-            parameters,
-            body: (body.len() > delimiter.len())
-                .then(|| String::from_utf8_lossy(&body[delimiter.len()..]).into_owned()),
-        }
-    }
-
-    fn error() -> Self {
-        HttpRequest {
-            method: HttpMethod::Error,
-            path: String::new(),
-            body: None,
-            parameters: None,
-        }
-    }
-
-    fn test() {
-        HttpRequest::new(HttpMethod::Get, "/".to_string(), Some(vec![]), None); //be able to pass arr ([]) or String as well?
-    }
-
-    fn new(
-        method: HttpMethod,
-        path: String,
-        parameters: Option<Vec<(String, String)>>,
-        body: Option<String>,
-    ) -> Self {
-        HttpRequest {
-            method,
-            path,
-            parameters,
-            body,
-        }
-    }
-
-    fn default_get() -> Self {
-        HttpRequest::get("/".to_string(), None, None)
-    }
-
-    fn default_post() -> Self {
-        HttpRequest::post("".to_string(), None, None)
-    }
-
-    fn get(path: String, parameters: Option<Vec<(String, String)>>, body: Option<String>) -> Self {
-        HttpRequest {
-            method: HttpMethod::Get,
-            path,
-            parameters,
-            body,
-        }
-    }
-
-    fn post(path: String, parameters: Option<Vec<(String, String)>>, body: Option<String>) -> Self {
-        HttpRequest {
-            method: HttpMethod::Post,
-            path,
-            parameters,
-            body,
-        }
-    }
-}
-
-#[allow(unused)]
 enum Address {
     IPv4(String),
     IPv6(String),
 }
 
 impl Address {
-    //Returns reference to internal enum String, remove '&' from '&self' and '&String' to return owned String
     fn to_string(&self) -> &String {
         match self {
             Address::IPv4(addr) | Address::IPv6(addr) => addr,
         }
     }
+}
+
+fn main() {
+    let listener = match init_server(Address::IPv4(String::from("127.0.0.1:7878"))) {
+        Ok((tcp_listener, address)) => {
+            println!("Server listening on '{}'", address.to_string());
+            tcp_listener
+        }
+        Err(error) => {
+            eprintln!("{error}");
+            return;
+        }
+    };
+
+    wait_for_connections(listener);
 }
 
 //Returns a tcp listener on success or error string on failure
@@ -287,16 +96,15 @@ fn handle_connection(mut stream: TcpStream) {
         eprintln!("Failed to read from the stream. Error: {error}");
     }
     println!("Request size: {}", buffer.len());
-    //println!("Request: {}", String::from_utf8_lossy(&buffer[..]));
+    println!("Request: {}", String::from_utf8_lossy(&buffer[..]));
 
     //construct a request struct
     let request = HttpRequest::from_request_bytes(&buffer);
 
-    //validate request credentials
+    //TODO: validate request credentials
 
     //construct response from possible pathways
-    let root: String = "views/".to_string();
-    let gen_res = |filename: &str| generate_response(root + filename);
+    let gen_view = |filename: &str| generate_html_response(String::from("src/views/") + filename);
     let response = match request {
         HttpRequest {
             method: HttpMethod::Get,
@@ -304,20 +112,31 @@ fn handle_connection(mut stream: TcpStream) {
             parameters: _,
             body: _,
         } => match p.as_str() {
-            "/" => gen_res("index.html"),
-            "/page1" => gen_res("index.html"),
-            "/page2" => gen_res("index.html"),
-            _ => gen_res("404.html"),
+            "/" => gen_view("index.html"),
+            "/page1" => gen_view("index.html"),
+            "/page2" => gen_view("index.html"),
+            _ => gen_view("404.html"),
         },
-        /*HttpRequest {
+
+        HttpRequest {
             method: HttpMethod::Post,
             path: p,
+            parameters: _,
             body: b,
         } => match p.as_str() {
-            _ => gen_res("404.html"),
-        },*/
+            USER_ENDPOINT => {
+                match b {
+                    Some(json) => {
+                        HttpResponse::new(HttpStatus::Created, json) //TODO: do more with json than echo back
+                    }
+                    None => HttpResponse::json_404("todo"),
+                }
+            }
+            _ => HttpResponse::json_404("todo"),
+        },
+
         /*HttpRequest {
-            method: HttpMethod::Put,
+            method: HttpMethod::Patch,
             path: p,
             body: b,
         } => match p.as_str() {
@@ -330,81 +149,24 @@ fn handle_connection(mut stream: TcpStream) {
         } => match p.as_str() {
             _ => gen_res("404.html"),
         },*/
-        _ => gen_res("404.html"),
+        _ => HttpResponse::json_404("Resource"),
     };
 
-    //send generated response //TODO: add stream identifier for message
-    if let Err(error) = send_response(stream, &response) {
+    //send generated response //TODO: add stream identifier for error message
+    if let Err(error) = response.send(stream) {
         eprintln!("Failed to send response to stream. Error: {error}")
     }
 }
 
-fn send_response(mut stream: TcpStream, data: &[u8]) -> Result<()> {
-    let len = data.len();
-    let mut remaining_bytes = len;
-    let mut head = 0;
-
-    while remaining_bytes > 0 {
-        match stream.write(&data[head..]) {
-            Ok(0) => break,
-            Ok(n) => {
-                remaining_bytes -= n;
-                head += n;
-                if let Err(error) = stream.flush() {
-                    return Err(format!(
-                        "Failed to send data, sent {}/{} bytes. Error: {}",
-                        len - remaining_bytes,
-                        len,
-                        error
-                    ));
-                }
-            }
-            Err(error) => {
-                return Err(format!(
-                    "Failed to send data, sent {}/{} bytes. Error: {}",
-                    len - remaining_bytes,
-                    len,
-                    error
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
-//TODO: make HttpResponse
-fn generate_response(path: String) -> Vec<u8> {
+fn generate_html_response(path: String) -> HttpResponse {
     //read content file
-    let (status, content) = match fs::read_to_string(&path) {
-        Ok(content) => ("200 Ok", content),
+    let (status, body) = match fs::read_to_string(&path) {
+        Ok(content) => (HttpStatus::OK, content),
         Err(error) => {
             eprintln!("Error reading file {path}. Error: {error}");
-            ("404 Not Found", HttpRequest::DEFAULT_404_HTML.to_string())
+            return HttpResponse::html_404();
         }
     };
 
-    //construct header
-    let header = format!(
-        "HTTP/1.1 {}\r\nContent-Length: {}\r\n\r\n",
-        status,
-        content.len()
-    );
-
-    //construct response by appeding content to header
-    format!("{header}\r\n\r\n{content}").into_bytes()
-}
-
-fn main() {
-    let listener = match init_server(Address::IPv4("127.0.0.1:7878".to_string())) {
-        Ok((tcp_listener, address)) => {
-            println!("Server listening on '{}'", address.to_string());
-            tcp_listener
-        }
-        Err(error) => {
-            eprintln!("{error}");
-            return;
-        }
-    };
-
-    wait_for_connections(listener);
+    HttpResponse { status, body }
 }
