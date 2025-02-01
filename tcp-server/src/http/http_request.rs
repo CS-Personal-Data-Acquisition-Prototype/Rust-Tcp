@@ -1,24 +1,25 @@
 use std::str;
 use url::form_urlencoded;
 
-use super::HttpMethod;
+use super::{HttpHeader, HttpMethod};
 
-pub struct HttpRequest {
+pub struct HttpRequest {//TODO: make path, paramaters, and maybe body Types to allow pattern matching
     pub method: HttpMethod,
     pub path: String,
     pub parameters: Option<Vec<(String, String)>>,
+    pub headers: HttpHeader,
     pub body: Option<String>,
 }
 
 impl HttpRequest {
     pub fn to_string(&self) -> String {
         format!(
-            "{} {}{} HTTP/1.1\r\nContent Length: {}\r\n\r\n{}",
+            "{} {}{} HTTP/1.1\r\n{}\r\n\r\n{}",
             self.method.to_string(),
             self.path,
             self.parameters_to_string(),
-            self.body.as_ref().unwrap_or(&String::new()).len(),
-            self.body.as_ref().unwrap_or(&String::new()),
+            self.headers.to_string(),
+            self.body.as_ref().unwrap_or(&String::from("Error converting request body to String.")),
         )
     }
 
@@ -55,13 +56,23 @@ impl HttpRequest {
         );
 
         //split the header on spaces ' '
-        let (method, whole_path) = {
+        let (method, whole_path, header_bytes) = {
             let mut split = header.splitn(3, |&byte| byte == b' ');
             (
                 HttpMethod::from_bytes(split.next().unwrap_or_default()),
                 split.next().unwrap_or_default(),
+                &split.next().unwrap_or_default()[10..],
             )
         };
+
+        let mut headers = HttpHeader::new();
+        
+        str::from_utf8(header_bytes).map_err(|error| {
+            format!("Error: {}", error)
+        }).unwrap_or("").lines().for_each(|line| {
+            let (k, v) = line.split_once(':').unwrap_or(("", ""));
+            headers.insert(String::from(k), String::from(v));
+        });
 
         let (path, parameters): (String, Option<Vec<(String, String)>>) = {
             //split array at pos of '?' or end of byte array
@@ -90,6 +101,7 @@ impl HttpRequest {
             method,
             path,
             parameters,
+            headers,
             body: (body.len() > delimiter.len())
                 .then(|| String::from_utf8_lossy(&body[delimiter.len()..]).into_owned()),
         }
@@ -99,8 +111,9 @@ impl HttpRequest {
         HttpRequest {
             method: HttpMethod::Error,
             path: String::new(),
-            body: None,
             parameters: None,
+            headers: HttpHeader::new(),
+            body: None,
         }
     }
 
@@ -108,41 +121,45 @@ impl HttpRequest {
         method: HttpMethod,
         path: String,
         parameters: Option<Vec<(String, String)>>,
+        headers: HttpHeader,
         body: Option<String>,
     ) -> Self {
         HttpRequest {
             method,
             path,
             parameters,
+            headers,
             body,
         }
     }
 
     pub fn default_get() -> Self {
-        HttpRequest::get("/".to_string(), None, None)
+        HttpRequest::get(String::from("/"), None, HttpHeader::default_json(String::new()), None)
     }
 
     pub fn default_post() -> Self {
-        HttpRequest::post("/".to_string(), None, None)
+        HttpRequest::post(String::from("/"), None, HttpHeader::default_json(String::new()), None)
     }
 
     pub fn default_patch() -> Self {
-        HttpRequest::patch("/".to_string(), None, None)
+        HttpRequest::patch(String::from("/"), None, HttpHeader::default_json(String::new()), None)
     }
 
     pub fn default_delete() -> Self {
-        HttpRequest::delete("/".to_string(), None, None)
+        HttpRequest::delete(String::from("/"), None, HttpHeader::default_json(String::new()), None)
     }
 
     pub fn get(
         path: String,
         parameters: Option<Vec<(String, String)>>,
+        headers: HttpHeader,
         body: Option<String>,
     ) -> Self {
         HttpRequest {
             method: HttpMethod::Get,
             path,
             parameters,
+            headers,
             body,
         }
     }
@@ -150,12 +167,14 @@ impl HttpRequest {
     pub fn post(
         path: String,
         parameters: Option<Vec<(String, String)>>,
+        headers: HttpHeader,
         body: Option<String>,
     ) -> Self {
         HttpRequest {
             method: HttpMethod::Post,
             path,
             parameters,
+            headers,
             body,
         }
     }
@@ -163,12 +182,14 @@ impl HttpRequest {
     pub fn patch(
         path: String,
         parameters: Option<Vec<(String, String)>>,
+        headers: HttpHeader,
         body: Option<String>,
     ) -> Self {
         HttpRequest {
             method: HttpMethod::Patch,
             path,
             parameters,
+            headers,
             body,
         }
     }
@@ -176,18 +197,26 @@ impl HttpRequest {
     pub fn delete(
         path: String,
         parameters: Option<Vec<(String, String)>>,
+        headers: HttpHeader,
         body: Option<String>,
     ) -> Self {
         HttpRequest {
             method: HttpMethod::Delete,
             path,
             parameters,
+            headers,
             body,
         }
     }
 
     //TODO testing function
     pub fn test() {
-        HttpRequest::new(HttpMethod::Get, "/".to_string(), Some(vec![]), None);
+        HttpRequest::new(
+            HttpMethod::Get,
+            String::from("/"),
+            Some(vec![]),
+            HttpHeader::default_json(String::new()),
+            None
+        );
     }
 }

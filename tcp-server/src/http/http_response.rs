@@ -1,9 +1,10 @@
 use std::{io::Write, net::TcpStream};
 
-use super::HttpStatus;
+use super::{HttpHeader, HttpStatus};
 
 pub struct HttpResponse {
     pub status: HttpStatus,
+    pub headers: HttpHeader,
     pub body: String,
 }
 
@@ -11,6 +12,7 @@ impl HttpResponse {
     pub fn html_404() -> HttpResponse {
         HttpResponse {
             status: HttpStatus::NotFound,
+            headers: HttpHeader::default_html(String::new()),
             body: String::from("<html><body><h1>404 Not Found</h1></body></html>"),
         }
     }
@@ -18,23 +20,23 @@ impl HttpResponse {
     pub fn json_404(resource: &str) -> HttpResponse {
         HttpResponse {
             status: HttpStatus::NotFound,
+            headers: HttpHeader::default_json(String::new()),
             body: format!("{{ \"error\":\"{resource} not found\" }}"),
         }
     }
 
-    pub fn new(status: HttpStatus, body: String) -> HttpResponse {
-        HttpResponse { status, body }
+    pub fn new(status: HttpStatus, header: HttpHeader, body: String) -> HttpResponse {
+        HttpResponse { status, headers: header, body }
     }
 
     pub fn to_string(&self) -> String {
-        let header = format!(
-            "HTTP/1.1 {}\r\nContent-Length: {}\r\n\r\n",
+        format!(
+            "HTTP/1.1 {}\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
             self.status.to_string(),
-            self.body.len()
-        );
-
-        //construct response by appeding content to header
-        format!("{}\r\n\r\n{}", header, self.body)
+            self.body.len(),
+            self.headers.to_string(),
+            self.body,
+        )
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -42,6 +44,8 @@ impl HttpResponse {
     }
 
     pub fn send(&self, mut stream: TcpStream) -> Result<(), String> {
+        println!("--- Response: {}", self.to_string());
+
         let data: &[u8] = &self.to_bytes();
         let len: usize = data.len();
         let mut remaining_bytes = len;

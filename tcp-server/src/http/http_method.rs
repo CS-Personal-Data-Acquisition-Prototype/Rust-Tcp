@@ -1,28 +1,3 @@
-//statuses the server uses
-pub enum HttpStatus {
-    OK = 200,
-    Created = 201,
-    NoContent = 204,
-    BadRequest = 400,
-    Unauthorized = 401,
-    Forbidden = 403,
-    NotFound = 404,
-}
-
-impl HttpStatus {
-    pub fn to_string(&self) -> String {
-        match self {
-            HttpStatus::OK => String::from("200 OK"),
-            HttpStatus::Created => String::from("201 Created"),
-            HttpStatus::NoContent => String::from("204 No Content"),
-            HttpStatus::BadRequest => String::from("400 Bad Request"),
-            HttpStatus::Unauthorized => String::from("401 Unauthorized"),
-            HttpStatus::Forbidden => String::from("403 Forbidden"),
-            HttpStatus::NotFound => String::from("404 Not Found"),
-        }
-    }
-}
-
 //methods the server allows along with a catchall Error
 pub enum HttpMethod {
     Get,

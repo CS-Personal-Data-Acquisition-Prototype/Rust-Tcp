@@ -22,7 +22,7 @@ use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 use std::str;
 
-use http::{HttpMethod, HttpRequest, HttpResponse, HttpStatus};
+use http::{HttpHeader, HttpMethod, HttpRequest, HttpResponse, HttpStatus};
 
 const AUTHENTICATION_ENDPOINT: &str = "/authentication";
 const USER_ENDPOINT: &str = "/users";
@@ -95,8 +95,9 @@ fn handle_connection(mut stream: TcpStream) {
     if let Err(error) = stream.read(&mut buffer) {
         eprintln!("Failed to read from the stream. Error: {error}");
     }
-    println!("Request size: {}", buffer.len());
-    println!("Request: {}", String::from_utf8_lossy(&buffer[..]));
+
+    //println!("Request size: {}", buffer.len());
+    //println!("Request: {}", String::from_utf8_lossy(&buffer[..]));
 
     //construct a request struct
     let request = HttpRequest::from_request_bytes(&buffer);
@@ -110,6 +111,7 @@ fn handle_connection(mut stream: TcpStream) {
             method: HttpMethod::Get,
             path: p,
             parameters: _,
+            headers: _,
             body: _,
         } => match p.as_str() {
             "/" => gen_view("index.html"),
@@ -122,12 +124,17 @@ fn handle_connection(mut stream: TcpStream) {
             method: HttpMethod::Post,
             path: p,
             parameters: _,
+            headers: _,
             body: b,
         } => match p.as_str() {
             USER_ENDPOINT => {
                 match b {
                     Some(json) => {
-                        HttpResponse::new(HttpStatus::Created, json) //TODO: do more with json than echo back
+                        HttpResponse::new(
+                            HttpStatus::Created,
+                            HttpHeader::default_json(String::from("TempSessionId")),
+                            json
+                        ) //TODO: do more with json than echo back
                     }
                     None => HttpResponse::json_404("todo"),
                 }
@@ -168,5 +175,9 @@ fn generate_html_response(path: String) -> HttpResponse {
         }
     };
 
-    HttpResponse { status, body }
+    HttpResponse {
+        status,
+        headers: HttpHeader::default_html(String::from("TempSessionId")),
+        body
+    }
 }
