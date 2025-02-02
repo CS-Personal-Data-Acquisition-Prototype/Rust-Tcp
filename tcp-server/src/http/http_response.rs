@@ -26,7 +26,11 @@ impl HttpResponse {
     }
 
     pub fn new(status: HttpStatus, header: HttpHeader, body: String) -> HttpResponse {
-        HttpResponse { status, headers: header, body }
+        HttpResponse {
+            status,
+            headers: header,
+            body: body.trim_end_matches('\0').to_string(),
+        }
     }
 
     pub fn to_string(&self) -> String {
@@ -44,7 +48,10 @@ impl HttpResponse {
     }
 
     pub fn send(&self, mut stream: TcpStream) -> Result<(), String> {
-        println!("--- Response: {}", self.to_string());
+        println!(
+            "----------\nSending Response:\n{}\n----------",
+            self.to_string()
+        );
 
         let data: &[u8] = &self.to_bytes();
         let len: usize = data.len();

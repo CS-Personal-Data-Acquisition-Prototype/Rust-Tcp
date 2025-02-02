@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use chrono::Utc;
+use std::collections::HashMap;
 
 //statuses the server uses
 pub enum HttpStatus {
@@ -27,20 +27,28 @@ impl HttpStatus {
 }
 
 pub struct HttpHeader {
-    pub headers: HashMap<String, String>,
+    headers: HashMap<String, String>,
 }
 
 impl HttpHeader {
     pub fn new() -> Self {
-        HttpHeader { headers: HashMap::new() }
+        HttpHeader {
+            headers: HashMap::new(),
+        }
     }
 
     pub fn default(content_type: String, session_id: String) -> Self {
         let mut header = HttpHeader::new();
 
-        header.headers.insert(String::from("Content-Type"), content_type);
-        header.headers.insert(String::from("session_id"), session_id);
-        header.headers.insert(String::from("Datetime"), Utc::now().timestamp().to_string());//TODO: this isn't working correctly
+        header
+            .headers
+            .insert(String::from("Content-Type"), content_type);
+        header
+            .headers
+            .insert(String::from("session_id"), session_id);
+        header
+            .headers
+            .insert(String::from("Datetime"), Utc::now().timestamp().to_string()); //TODO: this isn't working correctly
 
         header
     }
@@ -54,12 +62,18 @@ impl HttpHeader {
     }
 
     pub fn to_string(&self) -> String {
-        self.headers.iter().map(|(k, v)| format!("{}: {}", k, v))
-        .collect::<Vec<String>>()
-        .join("\r\n")
+        self.headers
+            .iter()
+            .map(|(k, v)| format!("{}: {}", k, v))
+            .collect::<Vec<String>>()
+            .join("\r\n")
     }
 
     pub fn insert(&mut self, key: String, value: String) -> Option<String> {
         self.headers.insert(key, value)
+    }
+
+    pub fn get(&self, key: String) -> Option<&String> {
+        self.headers.get(&key)
     }
 }

@@ -133,7 +133,7 @@ fn handle_connection(mut stream: TcpStream) {
                         HttpResponse::new(
                             HttpStatus::Created,
                             HttpHeader::default_json(String::from("TempSessionId")),
-                            json
+                            json,
                         ) //TODO: do more with json than echo back
                     }
                     None => HttpResponse::json_404("todo"),
@@ -178,6 +178,6 @@ fn generate_html_response(path: String) -> HttpResponse {
     HttpResponse {
         status,
         headers: HttpHeader::default_html(String::from("TempSessionId")),
-        body
+        body,
     }
 }
