@@ -1,14 +1,15 @@
 use std::str;
+use serde_json::{json, Value};
 use url::form_urlencoded;
 
 use super::{HttpHeader, HttpMethod};
 
-pub struct HttpRequest {//TODO: make path, paramaters, and maybe body Types to allow pattern matching
+pub struct HttpRequest {//TODO: make paramaters own Type like HttpHeader to allow pattern matching
     pub method: HttpMethod,
     pub path: String,
     pub parameters: Option<Vec<(String, String)>>,
     pub headers: HttpHeader,
-    pub body: Option<String>,
+    pub body: Option<Value>,
 }
 
 impl HttpRequest {
@@ -19,7 +20,7 @@ impl HttpRequest {
             self.path,
             self.parameters_to_string(),
             self.headers.to_string(),
-            self.body.as_ref().unwrap_or(&String::from("Error converting request body to String.")),
+            self.body.unwrap_or(json!({"Error":"Error parsing request body to JSON."})),
         )
     }
 
@@ -103,7 +104,7 @@ impl HttpRequest {
             parameters,
             headers,
             body: (body.len() > delimiter.len())
-                .then(|| String::from_utf8_lossy(&body[delimiter.len()..]).into_owned()),
+                .then(|| String::from_utf8_lossy(&body[delimiter.len()..]).trim_end_matches('\0').to_string()),
         }
     }
 
@@ -134,19 +135,19 @@ impl HttpRequest {
     }
 
     pub fn default_get() -> Self {
-        HttpRequest::get(String::from("/"), None, HttpHeader::default_json(String::new()), None)
+        HttpRequest::get(String::from("/"), None, HttpHeader::default_json(), None)
     }
 
     pub fn default_post() -> Self {
-        HttpRequest::post(String::from("/"), None, HttpHeader::default_json(String::new()), None)
+        HttpRequest::post(String::from("/"), None, HttpHeader::default_json(), None)
     }
 
     pub fn default_patch() -> Self {
-        HttpRequest::patch(String::from("/"), None, HttpHeader::default_json(String::new()), None)
+        HttpRequest::patch(String::from("/"), None, HttpHeader::default_json(), None)
     }
 
     pub fn default_delete() -> Self {
-        HttpRequest::delete(String::from("/"), None, HttpHeader::default_json(String::new()), None)
+        HttpRequest::delete(String::from("/"), None, HttpHeader::default_json(), None)
     }
 
     pub fn get(
@@ -215,7 +216,7 @@ impl HttpRequest {
             HttpMethod::Get,
             String::from("/"),
             Some(vec![]),
-            HttpHeader::default_json(String::new()),
+            HttpHeader::default_json(),
             None
         );
     }

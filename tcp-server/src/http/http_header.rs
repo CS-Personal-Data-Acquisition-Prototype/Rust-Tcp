@@ -37,28 +37,21 @@ impl HttpHeader {
         }
     }
 
-    pub fn default(content_type: String, session_id: String) -> Self {
+    pub fn default(content_type: String) -> Self {
         let mut header = HttpHeader::new();
 
-        header
-            .headers
-            .insert(String::from("Content-Type"), content_type);
-        header
-            .headers
-            .insert(String::from("session_id"), session_id);
-        header
-            .headers
-            .insert(String::from("Datetime"), Utc::now().timestamp().to_string()); //TODO: this isn't working correctly
+        header.insert(String::from("Content-Type"), content_type);
+        header.insert(String::from("Datetime"), Utc::now().timestamp().to_string()); //TODO: this isn't working correctly
 
         header
     }
 
-    pub fn default_json(session_id: String) -> Self {
-        HttpHeader::default(String::from("application/json"), session_id)
+    pub fn default_json() -> Self {
+        HttpHeader::default(String::from("application/json"))
     }
 
-    pub fn default_html(session_id: String) -> Self {
-        HttpHeader::default(String::from("application/html"), session_id)
+    pub fn default_html() -> Self {
+        HttpHeader::default(String::from("application/html"))
     }
 
     pub fn to_string(&self) -> String {
@@ -75,5 +68,11 @@ impl HttpHeader {
 
     pub fn get(&self, key: String) -> Option<&String> {
         self.headers.get(&key)
+    }
+
+    pub fn set_session(&mut self, session_id: String) {
+        self.headers.insert(
+            String::from("Set-Cookie"),
+            format!("session_id={}; HttpOnly; SameSite=Strict; Max-Age=3600; Path=/", session_id));//; Domain=<host>
     }
 }

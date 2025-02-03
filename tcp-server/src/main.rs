@@ -23,6 +23,7 @@ use std::net::{TcpListener, TcpStream};
 use std::str;
 
 use http::{HttpHeader, HttpMethod, HttpRequest, HttpResponse, HttpStatus};
+use serde_json::Value;
 
 const AUTHENTICATION_ENDPOINT: &str = "/authentication";
 const USER_ENDPOINT: &str = "/users";
@@ -102,7 +103,7 @@ fn handle_connection(mut stream: TcpStream) {
     //construct a request struct
     let request = HttpRequest::from_request_bytes(&buffer);
 
-    //TODO: validate request credentials
+    //TODO: validate request credentials from header cookie and get user
 
     //construct response from possible pathways
     let gen_view = |filename: &str| generate_html_response(String::from("src/views/") + filename);
@@ -130,13 +131,14 @@ fn handle_connection(mut stream: TcpStream) {
             USER_ENDPOINT => {
                 match b {
                     Some(json) => {
+                        let v: Value = serde_json::from_str(&json).unwrap();//TODO: have body be html or json, if json then pre-parse it
                         HttpResponse::new(
                             HttpStatus::Created,
-                            HttpHeader::default_json(String::from("TempSessionId")),
+                            HttpHeader::default_json(),
                             json,
                         ) //TODO: do more with json than echo back
                     }
-                    None => HttpResponse::json_404("todo"),
+                    None => HttpResponse::json_404("todo"),//TODO replace
                 }
             }
             _ => HttpResponse::json_404("todo"),
@@ -177,7 +179,7 @@ fn generate_html_response(path: String) -> HttpResponse {
 
     HttpResponse {
         status,
-        headers: HttpHeader::default_html(String::from("TempSessionId")),
+        headers: HttpHeader::default_html(),
         body,
     }
 }

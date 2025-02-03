@@ -12,7 +12,7 @@ impl HttpResponse {
     pub fn html_404() -> HttpResponse {
         HttpResponse {
             status: HttpStatus::NotFound,
-            headers: HttpHeader::default_html(String::new()),
+            headers: HttpHeader::default_html(),
             body: String::from("<html><body><h1>404 Not Found</h1></body></html>"),
         }
     }
@@ -20,7 +20,7 @@ impl HttpResponse {
     pub fn json_404(resource: &str) -> HttpResponse {
         HttpResponse {
             status: HttpStatus::NotFound,
-            headers: HttpHeader::default_json(String::new()),
+            headers: HttpHeader::default_json(),
             body: format!("{{ \"error\":\"{resource} not found\" }}"),
         }
     }
@@ -48,11 +48,6 @@ impl HttpResponse {
     }
 
     pub fn send(&self, mut stream: TcpStream) -> Result<(), String> {
-        println!(
-            "----------\nSending Response:\n{}\n----------",
-            self.to_string()
-        );
-
         let data: &[u8] = &self.to_bytes();
         let len: usize = data.len();
         let mut remaining_bytes = len;
