@@ -1,5 +1,7 @@
 use std::{io::Write, net::TcpStream};
 
+use serde_json::json;
+
 use super::{HttpHeader, HttpStatus};
 
 pub struct HttpResponse {
@@ -21,7 +23,7 @@ impl HttpResponse {
         HttpResponse {
             status: HttpStatus::NotFound,
             headers: HttpHeader::default_json(),
-            body: format!("{{ \"error\":\"{resource} not found\" }}"),
+            body: json!({"error": format!("{resource} not found")}).to_string(),
         }
     }
 
@@ -79,5 +81,29 @@ impl HttpResponse {
             }
         }
         Ok(())
+    }
+
+    pub fn bad_request(error_msg: &str) -> HttpResponse {
+        HttpResponse::new(
+            HttpStatus::BadRequest,
+            HttpHeader::default_json(),
+            json!({"error": error_msg}).to_string(),
+        )
+    }
+
+    pub fn missing_body() -> HttpResponse {
+        HttpResponse::bad_request("Missing request body.")
+    }
+
+    pub fn invalid_body() -> HttpResponse {
+        HttpResponse::bad_request("Invalid request body.")
+    }
+
+    pub fn not_authorized() -> HttpResponse {
+        HttpResponse::new(
+            HttpStatus::Forbidden,
+            HttpHeader::default_json(),
+            json!({"error": "User not authorized"}).to_string(),
+        )
     }
 }

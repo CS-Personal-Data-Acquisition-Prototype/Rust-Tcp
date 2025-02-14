@@ -14,6 +14,7 @@
 //! - [ ] Multithread with pooling
 //! - [ ] Database interface
 //!
+mod data;
 mod http;
 mod models;
 
@@ -22,15 +23,12 @@ use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 use std::str;
 
-use http::{HttpHeader, HttpMethod, HttpRequest, HttpResponse, HttpStatus};
-use serde_json::Value;
+use data::{Database, MockDatabase, SqliteDatabase};
+use http::{HttpHeader, HttpMethod, HttpPath, HttpRequest, HttpResponse, HttpStatus};
+use models::User;
+use serde_json::json;
 
-const AUTHENTICATION_ENDPOINT: &str = "/authentication";
-const USER_ENDPOINT: &str = "/users";
-const SENSOR_ENDPOINT: &str = "/sensors";
-const SESSION_ENDPOINT: &str = "/sessions";
-const SESSION_SENSOR_ENDPOINT: &str = "/sessions-sensors";
-const SESSION_SENSOR_DATA_ENDPOINT: &str = "/sessions-sensors-data";
+const DATABASE_URL: &str = "";
 
 //Result generalization, could replace String with custom error enum
 type Result<T> = core::result::Result<T, String>;
@@ -60,7 +58,16 @@ fn main() {
         }
     };
 
-    wait_for_connections(listener);
+    let database = MockDatabase::new();
+    /*let database = match SqliteDatabase::new(DATABASE_URL) {
+        Ok(db) => db,
+        Err(error) => {
+            println!("Failed to establish database connection. Error: {error}");
+            return;
+        },
+    };*/
+
+    wait_for_connections(&database, listener);
 }
 
 //Returns a tcp listener on success or error string on failure
@@ -75,12 +82,12 @@ fn init_server(address: Address) -> Result<(TcpListener, Address)> {
 }
 
 //Forever wait for connections on the listener
-fn wait_for_connections(listener: TcpListener) {
+fn wait_for_connections(database: &dyn Database, listener: TcpListener) {
     listener
         .incoming()
         .for_each(|stream_result| match stream_result {
             Ok(stream) => {
-                handle_connection(stream);
+                handle_connection(database, stream);
             }
             Err(error) => {
                 eprintln!("Error occured when establishing connection. Error: {error}");
@@ -88,7 +95,7 @@ fn wait_for_connections(listener: TcpListener) {
         });
 }
 
-fn handle_connection(mut stream: TcpStream) {
+fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
     //allocate a buffer
     let mut buffer = [0; 1024]; //TODO: change size later
 
@@ -97,8 +104,8 @@ fn handle_connection(mut stream: TcpStream) {
         eprintln!("Failed to read from the stream. Error: {error}");
     }
 
-    //println!("Request size: {}", buffer.len());
-    //println!("Request: {}", String::from_utf8_lossy(&buffer[..]));
+    #[cfg(debug_assertions)]
+    //println!("Request size: {}\nRequest: {}", buffer.len(), String::from_utf8_lossy(&buffer[..]));
 
     //construct a request struct
     let request = HttpRequest::from_request_bytes(&buffer);
@@ -107,58 +114,76 @@ fn handle_connection(mut stream: TcpStream) {
 
     //construct response from possible pathways
     let gen_view = |filename: &str| generate_html_response(String::from("src/views/") + filename);
-    let response = match request {
-        HttpRequest {
-            method: HttpMethod::Get,
-            path: p,
-            parameters: _,
-            headers: _,
-            body: _,
-        } => match p.as_str() {
-            "/" => gen_view("index.html"),
-            "/page1" => gen_view("index.html"),
-            "/page2" => gen_view("index.html"),
-            _ => gen_view("404.html"),
-        },
-
-        HttpRequest {
-            method: HttpMethod::Post,
-            path: p,
-            parameters: _,
-            headers: _,
-            body: b,
-        } => match p.as_str() {
-            USER_ENDPOINT => {
-                match b {
-                    Some(json) => {
-                        let v: Value = serde_json::from_str(&json).unwrap();//TODO: have body be html or json, if json then pre-parse it
-                        HttpResponse::new(
-                            HttpStatus::Created,
-                            HttpHeader::default_json(),
-                            json,
-                        ) //TODO: do more with json than echo back
+    let response = match request.path.clone() {
+        HttpPath::Index(subpath) => gen_view("index.html"),
+        HttpPath::NotFound(path) => HttpResponse::json_404(&path),
+        HttpPath::Authentication(subpath) => todo!(),
+        HttpPath::User(subpath) => match request.method {
+            HttpMethod::Get => match subpath.as_str() {
+                "" => {
+                    if !database.is_admin() {
+                        HttpResponse::not_authorized()
+                    } else {
+                        match database.get_users() {
+                            Ok(users) => HttpResponse::new(
+                                HttpStatus::OK,
+                                HttpHeader::default_json(),
+                                json!({"users": users.iter().map(|user| user.get_username()).collect::<Vec<_>>()}).to_string(),
+                            ),
+                            Err(_) => HttpResponse::bad_request("Failed to fetch users from database.")
+                        }
                     }
-                    None => HttpResponse::json_404("todo"),//TODO replace
                 }
-            }
-            _ => HttpResponse::json_404("todo"),
+                "/profile" => match database
+                    .get_session_user(request.headers.get(String::from("session_id")))//TODO: move nested .get to a match
+                {
+                    //TODO: replace &str with constant
+                    Ok(username) => match database.get_user(username) {
+                        Ok(user) => HttpResponse::new(
+                            HttpStatus::OK,
+                            HttpHeader::default_json(),
+                            user.public_json()
+                        ),
+                        Err(_) => HttpResponse::json_404("User"),
+                    },
+                    Err(_) => HttpResponse::json_404("User"),
+                },
+                s => {
+                    let username = match s[1..].split_once('/') {
+                        Some((first, _)) => first.to_string(),
+                        None => s[1..].to_string(),
+                    };
+                    match database.get_user(username) {
+                        Ok(user) => todo!(),
+                        Err(_) => HttpResponse::json_404(&request.path.to_string()),
+                    }
+                }
+            },
+            HttpMethod::Post => match request.body {
+                Some(json) => match serde_json::from_value::<User>(json) {
+                    Ok(user) => match user.is_valid() {
+                        true => match database.insert_user(&user) {
+                            Ok(_) => HttpResponse::new(
+                                HttpStatus::Created,
+                                HttpHeader::default_json(),
+                                user.public_json(),
+                            ),
+                            Err(_) => HttpResponse::bad_request("Error creating user."),
+                        },
+                        false => HttpResponse::bad_request("Invalid user data."),
+                    },
+                    Err(_) => HttpResponse::invalid_body(),
+                },
+                None => HttpResponse::missing_body(),
+            },
+            HttpMethod::Patch => todo!(),
+            HttpMethod::Delete => todo!(),
+            HttpMethod::Error => todo!(),
         },
-
-        /*HttpRequest {
-            method: HttpMethod::Patch,
-            path: p,
-            body: b,
-        } => match p.as_str() {
-            _ => gen_res("404.html"),
-        },*/
-        /*HttpRequest {
-            method: HttpMethod::Delete,
-            path: p,
-            body: _,
-        } => match p.as_str() {
-            _ => gen_res("404.html"),
-        },*/
-        _ => HttpResponse::json_404("Resource"),
+        HttpPath::Sensor(subpath) => todo!(),
+        HttpPath::Session(subpath) => todo!(),
+        HttpPath::SessionSensor(subpath) => todo!(),
+        HttpPath::SessionSensorData(subpath) => todo!(),
     };
 
     //send generated response //TODO: add stream identifier for error message
