@@ -40,17 +40,20 @@ impl SessionSensorData {
     ) -> crate::http::HttpResponse {
         let msg = Some(" Requires the values \"datapoints\": array [ { \"id\": string, \"datetime\": string, \"data_blob\": string }, ... ]");
         match body {
-            Some(json) => match json.as_array() {
-                Some(json_array) => match json_array
-                    .iter()
-                    .map(|json_value| SessionSensorData::from_json(json_value.clone()))
-                    .collect::<std::result::Result<Vec<_>, _>>()
-                {
-                    Ok(data) => match database.batch_session_sensor_data(&data) {
-                        Ok(_) => HttpResponse::no_content(),
-                        Err(_) => HttpResponse::bad_request(msg.unwrap()),
+            Some(json) => match json.get("datapoints") {
+                Some(json_value_array) => match json_value_array.as_array() {
+                    Some(json_array) => match json_array
+                        .iter()
+                        .map(|json_value| SessionSensorData::from_json(json_value.clone()))
+                        .collect::<std::result::Result<Vec<_>, _>>()
+                    {
+                        Ok(data) => match database.batch_session_sensor_data(&data) {
+                            Ok(_) => HttpResponse::no_content(),
+                            Err(_) => HttpResponse::bad_request(msg.unwrap()),
+                        },
+                        Err(_) => HttpResponse::invalid_body(msg),
                     },
-                    Err(_) => HttpResponse::invalid_body(msg),
+                    None => HttpResponse::invalid_body(msg),
                 },
                 None => HttpResponse::invalid_body(msg),
             },

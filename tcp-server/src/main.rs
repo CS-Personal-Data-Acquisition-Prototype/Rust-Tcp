@@ -12,7 +12,7 @@
 //! - [x] Route handling with respect to method, path, and body
 //! - [ ] Request query string parsed
 //! - [ ] Multithread with pooling
-//! - [ ] Database interface
+//! - [x] Database interface
 //!
 mod data;
 mod http;
@@ -105,7 +105,7 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
     if let Err(error) = stream.read(&mut buffer) {
         eprintln!("Failed to read from the stream. Error: {error}");
     }
-    
+
     //println!("Request size: {}\nRequest: {}", buffer.len(), String::from_utf8_lossy(&buffer[..]));
 
     //construct a request struct

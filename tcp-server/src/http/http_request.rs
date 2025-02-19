@@ -111,12 +111,20 @@ impl HttpRequest {
             .trim_end_matches('\0')
             .to_string();
 
+        let body = match trim_body.len() > 0 {
+            true => match serde_json::from_str::<Value>(&trim_body) {
+                Ok(value) => Some(value),
+                Err(_) => None,
+            },
+            false => None,
+        };
+
         HttpRequest {
             method,
             path: HttpPath::from_string(path),
             parameters,
             headers,
-            body: (trim_body.len() > 0).then(|| serde_json::from_str(&trim_body).unwrap()),
+            body,
         }
     }
 
