@@ -105,8 +105,7 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
     if let Err(error) = stream.read(&mut buffer) {
         eprintln!("Failed to read from the stream. Error: {error}");
     }
-
-    #[cfg(debug_assertions)]
+    
     //println!("Request size: {}\nRequest: {}", buffer.len(), String::from_utf8_lossy(&buffer[..]));
 
     //construct a request struct
