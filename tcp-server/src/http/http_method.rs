@@ -28,6 +28,7 @@ impl HttpMethod {
         }
     }
 
+    #[allow(unused)]
     pub fn from_string(string: String) -> Self {
         for method in Self::ALL_TYPES {
             if string.starts_with(&method.to_string()) {

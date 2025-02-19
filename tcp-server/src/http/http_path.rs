@@ -75,4 +75,22 @@ impl HttpPath {
             None => HttpPath::NotFound(path),
         }
     }
+
+    pub fn subsection(subpath: &str, index: usize) -> Option<&str> {
+        if subpath.is_empty() {
+            return None;
+        }
+        let result = subpath[1..].split('/').nth(index);
+        let display_result = match result {
+            Some(str) => str,
+            None => "None",
+        };
+        println!(
+            "Subpath: {}, index: {}, result: {}",
+            subpath[1..].to_string(),
+            index,
+            display_result
+        );
+        result
+    }
 }

@@ -35,6 +35,10 @@ impl HttpResponse {
         }
     }
 
+    pub fn from_vec(body: String) -> HttpResponse {
+        HttpResponse::new(HttpStatus::OK, HttpHeader::default_json(), body)
+    }
+
     pub fn to_string(&self) -> String {
         format!(
             "HTTP/1.1 {}\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
@@ -91,19 +95,39 @@ impl HttpResponse {
         )
     }
 
-    pub fn missing_body() -> HttpResponse {
-        HttpResponse::bad_request("Missing request body.")
+    pub fn missing_body(msg: Option<&str>) -> HttpResponse {
+        HttpResponse::bad_request(
+            format!("Missing request body.{}", msg.unwrap_or_default()).as_str(),
+        )
     }
 
-    pub fn invalid_body() -> HttpResponse {
-        HttpResponse::bad_request("Invalid request body.")
+    pub fn invalid_body(msg: Option<&str>) -> HttpResponse {
+        HttpResponse::bad_request(
+            format!("Invalid request body.{}", msg.unwrap_or_default()).as_str(),
+        )
     }
 
     pub fn not_authorized() -> HttpResponse {
         HttpResponse::new(
+            HttpStatus::Unauthorized,
+            HttpHeader::default_json(),
+            json!({"error": "Invalid authentication credentials."}).to_string(),
+        )
+    }
+
+    pub fn forbidden() -> HttpResponse {
+        HttpResponse::new(
             HttpStatus::Forbidden,
             HttpHeader::default_json(),
-            json!({"error": "User not authorized"}).to_string(),
+            json!({"error": "User not authorized."}).to_string(),
+        )
+    }
+
+    pub fn no_content() -> HttpResponse {
+        HttpResponse::new(
+            HttpStatus::NoContent,
+            HttpHeader::default_json(),
+            String::new(),
         )
     }
 }

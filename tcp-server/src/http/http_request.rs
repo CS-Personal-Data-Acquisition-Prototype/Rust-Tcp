@@ -4,6 +4,7 @@ use url::form_urlencoded;
 
 use super::{HttpHeader, HttpMethod, HttpPath};
 
+#[allow(unused)]
 pub struct HttpRequest {
     pub method: HttpMethod,
     pub path: HttpPath,
@@ -13,6 +14,7 @@ pub struct HttpRequest {
 }
 
 impl HttpRequest {
+    #[allow(unused)]
     pub fn to_string(&self) -> String {
         format!(
             "{} {}{} HTTP/1.1\r\n{}\r\n\r\n{:#?}",
@@ -24,6 +26,7 @@ impl HttpRequest {
         )
     }
 
+    #[allow(unused)]
     //Returns a String in the format of "?key1=val1&keyN=valN" or "" if parameters is empty
     pub fn parameters_to_string(&self) -> String {
         self.parameters
@@ -42,6 +45,7 @@ impl HttpRequest {
             .unwrap_or_default()
     }
 
+    #[allow(unused)]
     pub fn to_bytes(&self) -> Vec<u8> {
         self.to_string().into_bytes()
     }
@@ -116,6 +120,7 @@ impl HttpRequest {
         }
     }
 
+    #[allow(unused)]
     pub fn error() -> Self {
         HttpRequest {
             method: HttpMethod::Error,
@@ -126,6 +131,7 @@ impl HttpRequest {
         }
     }
 
+    #[allow(unused)]
     pub fn new(
         method: HttpMethod,
         path: HttpPath,
@@ -142,42 +148,7 @@ impl HttpRequest {
         }
     }
 
-    pub fn default_get() -> Self {
-        HttpRequest::get(
-            HttpPath::Index(String::new()),
-            None,
-            HttpHeader::default_json(),
-            None,
-        )
-    }
-
-    pub fn default_post() -> Self {
-        HttpRequest::post(
-            HttpPath::Index(String::new()),
-            None,
-            HttpHeader::default_json(),
-            None,
-        )
-    }
-
-    pub fn default_patch() -> Self {
-        HttpRequest::patch(
-            HttpPath::Index(String::new()),
-            None,
-            HttpHeader::default_json(),
-            None,
-        )
-    }
-
-    pub fn default_delete() -> Self {
-        HttpRequest::delete(
-            HttpPath::Index(String::new()),
-            None,
-            HttpHeader::default_json(),
-            None,
-        )
-    }
-
+    #[allow(unused)]
     pub fn get(
         path: HttpPath,
         parameters: Option<Vec<(String, String)>>,
@@ -193,6 +164,7 @@ impl HttpRequest {
         }
     }
 
+    #[allow(unused)]
     pub fn post(
         path: HttpPath,
         parameters: Option<Vec<(String, String)>>,
@@ -208,6 +180,7 @@ impl HttpRequest {
         }
     }
 
+    #[allow(unused)]
     pub fn patch(
         path: HttpPath,
         parameters: Option<Vec<(String, String)>>,
@@ -223,6 +196,7 @@ impl HttpRequest {
         }
     }
 
+    #[allow(unused)]
     pub fn delete(
         path: HttpPath,
         parameters: Option<Vec<(String, String)>>,

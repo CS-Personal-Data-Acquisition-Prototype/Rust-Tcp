@@ -31,10 +31,33 @@ pub struct HttpHeader {
 }
 
 impl HttpHeader {
+    pub const SESSION_ID: &'static str = "session_id";
+    pub const COOKIE: &'static str = "Cookie";
+
     pub fn new() -> Self {
         HttpHeader {
             headers: HashMap::new(),
         }
+    }
+
+    #[allow(unused)]
+    pub fn with(mut head: Self, other: Vec<(String, String)>) -> Self {
+        other.iter().for_each(|(key, value)| {
+            head.insert(key.clone(), value.clone());
+        });
+        head
+    }
+
+    pub fn set_session(mut self, session_id: String) -> Self {
+        self.insert(
+            String::from("Set-Cookie"),
+            format!(
+                "{}={}; HttpOnly; SameSite=Strict; Max-Age=3600; Path=/", //; Domain=<host>
+                Self::SESSION_ID,
+                session_id
+            ),
+        );
+        self
     }
 
     pub fn default(content_type: String) -> Self {
@@ -66,13 +89,20 @@ impl HttpHeader {
         self.headers.insert(key, value)
     }
 
-    pub fn get(&self, key: String) -> Option<&String> {
-        self.headers.get(&key)
+    pub fn get(&self, key: &str) -> Option<&String> {
+        self.headers.get(key)
     }
 
-    pub fn set_session(&mut self, session_id: String) {
-        self.headers.insert(
-            String::from("Set-Cookie"),
-            format!("session_id={}; HttpOnly; SameSite=Strict; Max-Age=3600; Path=/", session_id));//; Domain=<host>
+    pub fn get_cookie(&self, key: &str) -> Option<String> {
+        match self.get(HttpHeader::COOKIE) {
+            Some(cookie_str) => match cookie_str.split_once(key) {
+                Some((_, split_cookie)) => match split_cookie[1..].split_once(';') {
+                    Some((cookie_value, _)) => Some(cookie_value.to_string()),
+                    None => Some(split_cookie[1..].to_string()),
+                },
+                None => None,
+            },
+            None => None,
+        }
     }
 }
