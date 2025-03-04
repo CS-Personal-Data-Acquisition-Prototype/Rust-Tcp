@@ -23,6 +23,10 @@ impl User {
     pub fn get_username(&self) -> String {
         self.username.clone()
     }
+
+    pub fn get_password_hash(&self) -> String {
+        self.password_hash.clone()
+    }
 }
 
 impl BaseModel for User {
