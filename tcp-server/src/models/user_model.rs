@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::data::Database;
+use crate::{data::Database, http::HttpPath};
 
 type Result<T> = crate::Result<T>;
 
@@ -20,12 +20,16 @@ impl User {
         }
     }
 
-    pub fn get_username(&self) -> String {
-        self.username.clone()
+    pub fn empty() -> Self {
+        Self::new(String::new(), String::new())
     }
 
-    pub fn get_password_hash(&self) -> String {
-        self.password_hash.clone()
+    pub fn get_username(&self) -> &str {
+        &self.username
+    }
+
+    pub fn get_password_hash(&self) -> &str {
+        &self.password_hash
     }
 }
 
@@ -42,10 +46,43 @@ impl BaseModel for User {
         format!("{{\"username\":\"{}\"}}", self.username)
     }
 
+    fn fill_from(&mut self, other: &Self) {
+        if self.username.is_empty() {
+            self.username = other.get_username().to_string()
+        }
+        if self.password_hash.is_empty() {
+            self.password_hash = other.get_password_hash().to_string()
+        }
+    }
+
     fn insert_interface() -> impl FnOnce(&dyn Database, Self) -> Result<Self>
     where
         Self: Sized,
     {
         |database: &dyn Database, user: Self| -> Result<Self> { database.insert_user(&user) }
+    }
+
+    fn update_interface() -> impl FnOnce(&dyn Database, &str, Self) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        |database: &dyn Database, subpath: &str, updated_user: Self| -> Result<Self> {
+            match HttpPath::subsection(&subpath, 0) {
+                Some(username) => database.update_user(username, &updated_user),
+                None => Err(format!("Missing identifier in path: {subpath}")),
+            }
+        }
+    }
+
+    fn delete_interface() -> impl FnOnce(&dyn Database, &str) -> Result<()>
+    where
+        Self: Sized,
+    {
+        |database: &dyn Database, subpath: &str| -> Result<()> {
+            match HttpPath::subsection(&subpath, 0) {
+                Some(username) => database.delete_user(username),
+                None => Err(format!("Missing identifier in path: {subpath}")),
+            }
+        }
     }
 }

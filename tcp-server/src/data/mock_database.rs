@@ -1,4 +1,4 @@
-use crate::models::{Sensor, Session, SessionSensor, SessionSensorData, User};
+use crate::models::{BaseModel, Sensor, Session, SessionSensor, SessionSensorData, User};
 
 use super::Database;
 
@@ -9,7 +9,11 @@ pub struct MockDatabase;
 impl MockDatabase {
     const USERNAME: &'static str = "username";
     const PASSWORD: &'static str = "password";
+    const COOKIE_SESSION_ID: &'static str = "cookie_session_id";
     const SESSION_ID: &'static str = "session_id";
+    const SENSOR_ID: &'static str = "sensor_id";
+    const SENSOR_TYPE: &'static str = "sensor_type";
+    const DATA_BLOB: &'static str = "data_blob";
 
     pub fn new() -> MockDatabase {
         MockDatabase {}
@@ -106,7 +110,7 @@ impl Database for MockDatabase {
     }
 
     fn login(&self, _user: &User) -> Result<String> {
-        Ok(String::from(MockDatabase::SESSION_ID))
+        Ok(String::from(MockDatabase::COOKIE_SESSION_ID))
     }
 
     fn logout(&self, _session_id: &str) -> Result<()> {
@@ -114,7 +118,7 @@ impl Database for MockDatabase {
     }
 
     fn renew_session(&self, _old_session: &str) -> Result<String> {
-        Ok(format!("{}2", MockDatabase::SESSION_ID))
+        Ok(format!("{}2", MockDatabase::COOKIE_SESSION_ID))
     }
 
     /* User */
@@ -130,10 +134,24 @@ impl Database for MockDatabase {
         Ok(User::new(String::from(username), String::new()))
     }
 
+    fn update_user(&self, username: &str, updated_user: &User) -> Result<User> {
+        let mut user = User::empty();
+        user.fill_from(updated_user);
+        user.fill_from(&User::new(
+            username.to_string(),
+            MockDatabase::PASSWORD.to_string(),
+        ));
+        Ok(user)
+    }
+
+    fn delete_user(&self, _username: &str) -> Result<()> {
+        Ok(())
+    }
+
     /* Sensor */
     fn insert_sensor(&self, sensor: &Sensor) -> Result<Sensor> {
         Ok(Sensor::new(
-            String::from(MockDatabase::SESSION_ID),
+            String::from(MockDatabase::SENSOR_ID),
             sensor.get_sensor_type().to_string(),
         ))
     }
@@ -147,6 +165,20 @@ impl Database for MockDatabase {
             sensor_id.to_string(),
             String::from("sensor_type"),
         ))
+    }
+
+    fn update_sensor(&self, sensor_id: &str, updated_sensor: &Sensor) -> Result<Sensor> {
+        let mut sensor = Sensor::empty();
+        sensor.fill_from(updated_sensor);
+        sensor.fill_from(&Sensor::new(
+            sensor_id.to_string(),
+            MockDatabase::SENSOR_TYPE.to_string(),
+        ));
+        Ok(sensor)
+    }
+
+    fn delete_sensor(&self, _sensor_id: &str) -> Result<()> {
+        Ok(())
     }
 
     /* Session */
@@ -173,6 +205,20 @@ impl Database for MockDatabase {
 
     fn get_all_sessions(&self) -> Result<Vec<Session>> {
         Ok(MockDatabase::sessions())
+    }
+
+    fn update_session(&self, session_id: &str, updated_session: &Session) -> Result<Session> {
+        let mut session = Session::empty();
+        session.fill_from(updated_session);
+        session.fill_from(&Session::new(
+            session_id.to_string(),
+            MockDatabase::PASSWORD.to_string(),
+        ));
+        Ok(session)
+    }
+
+    fn delete_session(&self, _session_id: &str) -> Result<()> {
+        Ok(())
     }
 
     /* Session Sensor */
@@ -207,6 +253,25 @@ impl Database for MockDatabase {
             String::from("session_id"),
             String::from("sensor_id"),
         ))
+    }
+
+    fn update_session_sensor(
+        &self,
+        session_sensor_id: &str,
+        updated_session_sensor: &SessionSensor,
+    ) -> Result<SessionSensor> {
+        let mut session_sensor = SessionSensor::empty();
+        session_sensor.fill_from(updated_session_sensor);
+        session_sensor.fill_from(&SessionSensor::new(
+            session_sensor_id.to_string(),
+            MockDatabase::SESSION_ID.to_string(),
+            MockDatabase::SENSOR_ID.to_string(),
+        ));
+        Ok(session_sensor)
+    }
+
+    fn delete_session_sensor(&self, _session_sensor_id: &str) -> Result<()> {
+        Ok(())
     }
 
     /* Session Sensor Data */
@@ -268,5 +333,29 @@ impl Database for MockDatabase {
             datetime.to_string(),
             String::from("data_blob"),
         ))
+    }
+
+    fn update_session_sensor_datapoint(
+        &self,
+        session_sensor_id: &str,
+        datetime: &str,
+        updated_session_sensor_datapoint: &SessionSensorData,
+    ) -> Result<SessionSensorData> {
+        let mut session_sensor_datapoint = SessionSensorData::empty();
+        session_sensor_datapoint.fill_from(updated_session_sensor_datapoint);
+        session_sensor_datapoint.fill_from(&SessionSensorData::new(
+            session_sensor_id.to_string(),
+            datetime.to_string(),
+            MockDatabase::DATA_BLOB.to_string(),
+        ));
+        Ok(session_sensor_datapoint)
+    }
+
+    fn delete_session_sensor_datapoint(
+        &self,
+        _session_sensor_id: &str,
+        _datetime: &str,
+    ) -> Result<()> {
+        Ok(())
     }
 }

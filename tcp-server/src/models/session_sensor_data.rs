@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{data::Database, http::HttpResponse};
+use crate::{
+    data::Database,
+    http::{HttpPath, HttpResponse},
+};
 
 type Result<T> = crate::Result<T>;
 
@@ -20,6 +23,10 @@ impl SessionSensorData {
             datetime,
             data_blob,
         }
+    }
+
+    pub fn empty() -> Self {
+        Self::new(String::new(), String::new(), String::new())
     }
 
     pub fn get_id(&self) -> &str {
@@ -78,12 +85,61 @@ impl BaseModel for SessionSensorData {
         )
     }
 
+    fn fill_from(&mut self, other: &Self) {
+        if self.id.is_empty() {
+            self.id = other.get_id().to_string()
+        }
+        if self.datetime.is_empty() {
+            self.datetime = other.get_datetime().to_string()
+        }
+        if self.data_blob.is_empty() {
+            self.data_blob = other.get_blob().to_string()
+        }
+    }
+
     fn insert_interface() -> impl FnOnce(&dyn Database, Self) -> Result<Self>
     where
         Self: Sized,
     {
         |database: &dyn Database, session_sensor_data: Self| -> Result<Self> {
             database.insert_session_sensor_data(&session_sensor_data)
+        }
+    }
+
+    fn update_interface() -> impl FnOnce(&dyn Database, &str, Self) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        |database: &dyn Database,
+         subpath: &str,
+         updated_session_sensor_datapoint: Self|
+         -> Result<Self> {
+            match HttpPath::subsection(&subpath, 0) {
+                Some(id) => match HttpPath::subsection(&subpath, 1) {
+                    Some(datetime) => database.update_session_sensor_datapoint(
+                        id,
+                        datetime,
+                        &updated_session_sensor_datapoint,
+                    ),
+                    None => Err(format!("Missing identifier in path: {subpath}")),
+                },
+                None => Err(format!("Missing identifier in path: {subpath}")),
+            }
+        }
+    }
+
+    fn delete_interface() -> impl FnOnce(&dyn Database, &str) -> Result<()>
+    where
+        Self: Sized,
+    {
+        |database: &dyn Database, subpath: &str| -> Result<()> {
+            match HttpPath::subsection(&subpath, 0) {
+                Some(id) => match HttpPath::subsection(&subpath, 1) {
+                    Some(datetime) => database.delete_session_sensor_datapoint(id, datetime),
+                    None => Err(format!("Missing identifier in path: {subpath}")),
+                },
+                None => Err(format!("Missing identifier in path: {subpath}")),
+            }
         }
     }
 }

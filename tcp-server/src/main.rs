@@ -190,9 +190,9 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                     Err(_) => HttpResponse::json_404(&request.path.to_string()),
                 },
             },
-            HttpMethod::Post => User::try_insert_model(database, request.body),
-            HttpMethod::Patch => todo!(),
-            HttpMethod::Delete => todo!(),
+            HttpMethod::Post => User::insert_model(database, request.body),
+            HttpMethod::Patch => User::update_model(database, &subpath, request.body),
+            HttpMethod::Delete => User::delete_model(database, &subpath),
             HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
         },
         HttpPath::Sensor(subpath) => {
@@ -224,9 +224,9 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                         },
                     }
                 }
-                HttpMethod::Post => Sensor::try_insert_model(database, request.body),
-                HttpMethod::Patch => todo!(),
-                HttpMethod::Delete => todo!(),
+                HttpMethod::Post => Sensor::insert_model(database, request.body),
+                HttpMethod::Patch => Sensor::update_model(database, &subpath, request.body),
+                HttpMethod::Delete => Sensor::delete_model(database, &subpath),
                 HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
             }
         }
@@ -278,9 +278,9 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                     },
                     _ => HttpResponse::json_404(&request.path.to_string()),
                 },
-                HttpMethod::Post => Session::try_insert_model(database, request.body),
-                HttpMethod::Patch => todo!(),
-                HttpMethod::Delete => todo!(),
+                HttpMethod::Post => Session::insert_model(database, request.body),
+                HttpMethod::Patch => Session::update_model(database, &subpath, request.body),
+                HttpMethod::Delete => Session::delete_model(database, &subpath),
                 HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
             }
         }
@@ -336,9 +336,9 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                 }
                 _ => HttpResponse::json_404(&request.path.to_string()),
             },
-            HttpMethod::Post => SessionSensor::try_insert_model(database, request.body),
-            HttpMethod::Patch => todo!(),
-            HttpMethod::Delete => todo!(),
+            HttpMethod::Post => SessionSensor::insert_model(database, request.body),
+            HttpMethod::Patch => SessionSensor::update_model(database, &subpath, request.body),
+            HttpMethod::Delete => SessionSensor::delete_model(database, &subpath),
             HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
         },
         HttpPath::SessionSensorData(subpath) => match request.method {
@@ -400,12 +400,12 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                 },
             },
             HttpMethod::Post => match subpath.as_str() {
-                "" => SessionSensorData::try_insert_model(database, request.body),
+                "" => SessionSensorData::insert_model(database, request.body),
                 "/batch" => SessionSensorData::try_batch_model(database, request.body),
                 _ => HttpResponse::json_404(&request.path.to_string()),
             },
-            HttpMethod::Patch => todo!(),
-            HttpMethod::Delete => todo!(),
+            HttpMethod::Patch => SessionSensorData::update_model(database, &subpath, request.body),
+            HttpMethod::Delete => SessionSensorData::delete_model(database, &subpath),
             HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
         },
     };

@@ -13,8 +13,17 @@ pub trait BaseModel {
     #[allow(unused)]
     fn is_valid(&self) -> bool;
     fn public_json(&self) -> String;
+    fn fill_from(&mut self, other: &Self);
 
     fn insert_interface() -> impl FnOnce(&dyn Database, Self) -> Result<Self>
+    where
+        Self: Sized;
+
+    fn update_interface() -> impl FnOnce(&dyn Database, &str, Self) -> Result<Self>
+    where
+        Self: Sized;
+
+    fn delete_interface() -> impl FnOnce(&dyn Database, &str) -> Result<()>
     where
         Self: Sized;
 
@@ -38,7 +47,7 @@ pub trait BaseModel {
         )
     }
 
-    fn try_insert_model(database: &dyn Database, body: Option<serde_json::Value>) -> HttpResponse
+    fn insert_model(database: &dyn Database, body: Option<serde_json::Value>) -> HttpResponse
     where
         Self: DeserializeOwned,
     {
@@ -54,9 +63,37 @@ pub trait BaseModel {
         }
     }
 
-    //fn try_update_model(database: &dyn Database, body: Option<serde_json::Value>) -> HttpResponse;
+    fn update_model(
+        database: &dyn Database,
+        subpath: &str,
+        body: Option<serde_json::Value>,
+    ) -> HttpResponse
+    where
+        Self: DeserializeOwned,
+    {
+        match body {
+            Some(json) => match Self::from_json(json) {
+                Ok(update_model) => {
+                    match (Self::update_interface())(database, subpath, update_model) {
+                        Ok(updated_model) => updated_model.to_ok_response(),
+                        Err(_) => HttpResponse::json_404(&Self::TYPE_NAME),
+                    }
+                }
+                Err(_) => HttpResponse::bad_request(&Self::create_error_msg()),
+            },
+            None => HttpResponse::missing_body(Some(&Self::REQUIRED_VALUES)),
+        }
+    }
 
-    //fn try_delete_model(database: &dyn Database, body: Option<serde_json::Value>) -> HttpResponse;
+    fn delete_model(database: &dyn Database, subpath: &str) -> HttpResponse
+    where
+        Self: DeserializeOwned,
+    {
+        match (Self::delete_interface())(database, subpath) {
+            Ok(_) => HttpResponse::no_content(),
+            Err(_) => HttpResponse::json_404(&Self::TYPE_NAME),
+        }
+    }
 
     fn from_json(json: serde_json::Value) -> Result<Self>
     where

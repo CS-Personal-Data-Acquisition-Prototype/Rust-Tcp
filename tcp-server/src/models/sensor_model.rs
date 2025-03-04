@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::Database;
+use crate::{http::HttpPath, Database};
 
 type Result<T> = crate::Result<T>;
 
@@ -16,6 +16,9 @@ pub struct Sensor {
 impl Sensor {
     pub fn new(id: String, sensor_type: String) -> Self {
         Sensor { id, sensor_type }
+    }
+    pub fn empty() -> Self {
+        Self::new(String::new(), String::new())
     }
     pub fn get_id(&self) -> &str {
         &self.id
@@ -36,8 +39,18 @@ impl BaseModel for Sensor {
     fn public_json(&self) -> String {
         format!(
             "{{\"id\":\"{}\", \"type\":\"{}\"}}",
-            self.id, self.sensor_type
+            self.get_id(),
+            self.get_sensor_type()
         )
+    }
+
+    fn fill_from(&mut self, other: &Self) {
+        if self.id.is_empty() {
+            self.id = other.get_id().to_string()
+        }
+        if self.sensor_type.is_empty() {
+            self.sensor_type = other.get_sensor_type().to_string()
+        }
     }
 
     fn insert_interface() -> impl FnOnce(&dyn Database, Self) -> Result<Self>
@@ -45,5 +58,29 @@ impl BaseModel for Sensor {
         Self: Sized,
     {
         |database: &dyn Database, sensor: Self| -> Result<Self> { database.insert_sensor(&sensor) }
+    }
+
+    fn update_interface() -> impl FnOnce(&dyn Database, &str, Self) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        |database: &dyn Database, subpath: &str, updated_sensor: Self| -> Result<Self> {
+            match HttpPath::subsection(&subpath, 0) {
+                Some(id) => database.update_sensor(id, &updated_sensor),
+                None => Err(format!("Missing identifier in path: {subpath}")),
+            }
+        }
+    }
+
+    fn delete_interface() -> impl FnOnce(&dyn Database, &str) -> Result<()>
+    where
+        Self: Sized,
+    {
+        |database: &dyn Database, subpath: &str| -> Result<()> {
+            match HttpPath::subsection(&subpath, 0) {
+                Some(id) => database.delete_sensor(id),
+                None => Err(format!("Missing identifier in path: {subpath}")),
+            }
+        }
     }
 }
