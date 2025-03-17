@@ -10,44 +10,50 @@ The backend's purpose is to facilitate the connection between the [web client](h
 
 \<SUMMARIZE CRATE PURPOSE\>
 
-### Building
+### Usage
 
 #### Prerequisites
 
-- Rust Installation
+- Rust
 
-#### Build Steps
+#### Building
 
-\<EXPAND THIS\>
+\<EXPAND THIS IF NEEDED\>
 
 ```bash
-# Step 1
+# Navigate into the crate directory
 cd tcp-server
 
-# Step 2
-cargo ...
+# Build the crate
+cargo build
+
+# Build and run the crate
+cargo run
 ```
 
 ## tcp-client
 
 \<SUMMARIZE CRATE PURPOSE\>
 
-### Building
+### Usage
 
 #### Prerequisites
 
-- Rust Installation
+- Rust
 
-#### Build Steps
+#### Building
 
-\<EXPAND THIS\>
+\<EXPAND THIS IF NEEDED\>
 
 ```bash
-# Step 1
-cd tcp-client
+# Navigate into the crate directory
+cd tcp-server
 
-# Step 2
-cargo ...
+# Build the crate
+cargo build
+
+# Build and run the crate
+cargo run
 ```
 
 <!-- Navigate into the tcp-server file in a terminal
