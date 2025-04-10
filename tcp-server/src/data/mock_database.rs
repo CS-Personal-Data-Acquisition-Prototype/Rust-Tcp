@@ -13,7 +13,6 @@ impl MockDatabase {
     const SESSION_ID: &'static str = "session_id";
     const SENSOR_ID: &'static str = "sensor_id";
     const SENSOR_TYPE: &'static str = "sensor_type";
-    const DATA_BLOB: &'static str = "data_blob";
 
     pub fn new() -> MockDatabase {
         MockDatabase {}
@@ -72,27 +71,14 @@ impl MockDatabase {
     }
 
     pub fn sessions_sensors_data() -> Vec<SessionSensorData> {
+        let mut map = serde_json::Map::new();
+        map.insert("data_blob".to_string(), serde_json::Value::Null);
+        let blob = serde_json::Value::Object(map);
         vec![
-            SessionSensorData::new(
-                String::from("id_1"),
-                String::from("datetime_1"),
-                String::from("data_blob_1"),
-            ),
-            SessionSensorData::new(
-                String::from("id_2"),
-                String::from("datetime_2"),
-                String::from("data_blob_2"),
-            ),
-            SessionSensorData::new(
-                String::from("id_3"),
-                String::from("datetime_3"),
-                String::from("data_blob_3"),
-            ),
-            SessionSensorData::new(
-                String::from("id_4"),
-                String::from("datetime_4"),
-                String::from("data_blob_4"),
-            ),
+            SessionSensorData::new(Some(1), String::from("datetime_1"), blob.clone()),
+            SessionSensorData::new(Some(2), String::from("datetime_2"), blob.clone()),
+            SessionSensorData::new(Some(3), String::from("datetime_3"), blob.clone()),
+            SessionSensorData::new(Some(4), String::from("datetime_4"), blob),
         ]
     }
 }
@@ -280,9 +266,9 @@ impl Database for MockDatabase {
         session_sensor_data: &SessionSensorData,
     ) -> Result<SessionSensorData> {
         Ok(SessionSensorData::new(
-            String::from("id"),
+            Some(0),
             session_sensor_data.get_datetime().to_string(),
-            session_sensor_data.get_blob().to_string(),
+            session_sensor_data.get_blob().clone(),
         ))
     }
 
@@ -294,9 +280,9 @@ impl Database for MockDatabase {
             .iter()
             .map(|blob| {
                 SessionSensorData::new(
-                    String::from("id"),
+                    Some(0),
                     blob.get_datetime().to_string(),
-                    blob.get_blob().to_string(),
+                    blob.get_blob().clone(),
                 )
             })
             .collect::<Vec<_>>())
@@ -314,11 +300,16 @@ impl Database for MockDatabase {
         Ok(MockDatabase::sessions_sensors_data()
             .iter()
             .map(|blob| {
-                SessionSensorData::new(
-                    session_sensor_id.to_string(),
-                    blob.get_datetime().to_string(),
-                    blob.get_blob().to_string(),
-                )
+                let id = match session_sensor_id.parse::<usize>() {
+                    Ok(num) => Some(num),
+                    Err(e) => {
+                        eprintln!(
+                            "Failed to parse id ({session_sensor_id}) from string into usize: {e}"
+                        );
+                        None
+                    }
+                };
+                SessionSensorData::new(id, blob.get_datetime().to_string(), blob.get_blob().clone())
             })
             .collect::<Vec<_>>())
     }
@@ -328,10 +319,19 @@ impl Database for MockDatabase {
         session_sensor_id: &str,
         datetime: &str,
     ) -> Result<SessionSensorData> {
+        let id = match session_sensor_id.parse::<usize>() {
+            Ok(num) => Some(num),
+            Err(e) => {
+                eprintln!("Failed to parse id ({session_sensor_id}) from string into usize: {e}");
+                None
+            }
+        };
+        let mut map = serde_json::Map::new();
+        map.insert("data_blob".to_string(), serde_json::Value::Null);
         Ok(SessionSensorData::new(
-            session_sensor_id.to_string(),
+            id,
             datetime.to_string(),
-            String::from("data_blob"),
+            serde_json::Value::Object(map),
         ))
     }
 
@@ -341,12 +341,21 @@ impl Database for MockDatabase {
         datetime: &str,
         updated_session_sensor_datapoint: &SessionSensorData,
     ) -> Result<SessionSensorData> {
+        let id = match session_sensor_id.parse::<usize>() {
+            Ok(id) => Some(id),
+            Err(e) => {
+                eprintln!("Failed to parse id ({session_sensor_id}) from string to usize: {e}");
+                None
+            }
+        };
+        let mut map = serde_json::Map::new();
+        map.insert("data_blob".to_string(), serde_json::Value::Null);
         let mut session_sensor_datapoint = SessionSensorData::empty();
         session_sensor_datapoint.fill_from(updated_session_sensor_datapoint);
         session_sensor_datapoint.fill_from(&SessionSensorData::new(
-            session_sensor_id.to_string(),
+            id,
             datetime.to_string(),
-            MockDatabase::DATA_BLOB.to_string(),
+            serde_json::Value::Object(map),
         ));
         Ok(session_sensor_datapoint)
     }

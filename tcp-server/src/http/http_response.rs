@@ -55,35 +55,8 @@ impl HttpResponse {
 
     pub fn send(&self, mut stream: TcpStream) -> Result<(), String> {
         let data: &[u8] = &self.to_bytes();
-        let len: usize = data.len();
-        let mut remaining_bytes = len;
-        let mut head = 0;
-
-        while remaining_bytes > 0 {
-            match stream.write(&data[head..]) {
-                Ok(0) => break,
-                Ok(n) => {
-                    remaining_bytes -= n;
-                    head += n;
-                    if let Err(error) = stream.flush() {
-                        return Err(format!(
-                            "Failed to send data, sent {}/{} bytes. Error: {}",
-                            len - remaining_bytes,
-                            len,
-                            error
-                        ));
-                    }
-                }
-                Err(error) => {
-                    return Err(format!(
-                        "Failed to send data, sent {}/{} bytes. Error: {}",
-                        len - remaining_bytes,
-                        len,
-                        error
-                    ));
-                }
-            }
-        }
+        stream.write_all(data).map_err(|e| format!("Failed to send data (attempted {} bytes): {e}", data.len()))?;
+        stream.flush().map_err(|e| format!("Failed to flush after sending data: {e}"))?;
         Ok(())
     }
 

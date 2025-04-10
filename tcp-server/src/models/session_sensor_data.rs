@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 
 use crate::{
     data::Database,
@@ -11,13 +12,13 @@ use super::base_model::BaseModel;
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct SessionSensorData {
     #[serde(default)]
-    id: String,
+    id: Option<usize>,
     datetime: String,
-    data_blob: String,
+    data_blob: Value,
 }
 
 impl SessionSensorData {
-    pub fn new(id: String, datetime: String, data_blob: String) -> Self {
+    pub fn new(id: Option<usize>, datetime: String, data_blob: Value) -> Self {
         SessionSensorData {
             id,
             datetime,
@@ -26,10 +27,10 @@ impl SessionSensorData {
     }
 
     pub fn empty() -> Self {
-        Self::new(String::new(), String::new(), String::new())
+        Self::new(None, String::new(), Value::Null)
     }
 
-    pub fn get_id(&self) -> &str {
+    pub fn get_id(&self) -> &Option<usize> {
         &self.id
     }
 
@@ -37,7 +38,7 @@ impl SessionSensorData {
         &self.datetime
     }
 
-    pub fn get_blob(&self) -> &str {
+    pub fn get_blob(&self) -> &Value {
         &self.data_blob
     }
 
@@ -55,7 +56,10 @@ impl SessionSensorData {
                         .collect::<std::result::Result<Vec<_>, _>>()
                     {
                         Ok(data) => match database.batch_session_sensor_data(&data) {
-                            Ok(_) => HttpResponse::no_content(),
+                            Ok(_) => {
+                                println!("Data batch recieved to DB");
+                                HttpResponse::no_content()
+                            }
                             Err(_) => HttpResponse::bad_request(msg.unwrap()),
                         },
                         Err(_) => HttpResponse::invalid_body(msg),
@@ -75,25 +79,27 @@ impl BaseModel for SessionSensorData {
         " Requires values \"datetime\": string and \"data_blob\": string";
 
     fn is_valid(&self) -> bool {
-        !self.id.is_empty() && !self.datetime.is_empty() && !self.data_blob.is_empty()
+        self.id.is_some() && !self.datetime.is_empty() && !self.data_blob.is_object()
     }
 
     fn public_json(&self) -> String {
-        format!(
-            "{{\"id\":\"{}\", \"datetime\":\"{}\", \"data_blob\":\"{}\"}}",
-            self.id, self.datetime, self.data_blob
-        )
+        json!({
+            "id": self.id,
+            "datetime": self.datetime,
+            "data_blob": self.data_blob
+        })
+        .to_string()
     }
 
     fn fill_from(&mut self, other: &Self) {
-        if self.id.is_empty() {
-            self.id = other.get_id().to_string()
+        if self.id.is_none() {
+            self.id = other.get_id().clone()
         }
         if self.datetime.is_empty() {
             self.datetime = other.get_datetime().to_string()
         }
-        if self.data_blob.is_empty() {
-            self.data_blob = other.get_blob().to_string()
+        if self.data_blob.is_null() {
+            self.data_blob = other.get_blob().clone()
         }
     }
 

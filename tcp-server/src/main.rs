@@ -26,13 +26,20 @@ use std::str;
 use data::{Database, MockDatabase};
 use http::{HttpHeader, HttpMethod, HttpPath, HttpRequest, HttpResponse, HttpStatus};
 use models::{BaseModel, Sensor, Session, SessionSensor, SessionSensorData, User};
+use serde::Deserialize;
 use serde_json::json;
-
-#[allow(unused)]
-const DATABASE_URL: &str = "";
 
 //Result generalization, could replace String with custom error enum
 type Result<T> = core::result::Result<T, String>;
+
+const DELIMITER: &[u8] = b"<EOF>";
+
+#[allow(unused)]
+#[derive(Deserialize)]
+struct Config {
+    database_path: String,
+    local_addr: String,
+}
 
 #[allow(unused)]
 enum Address {
@@ -49,7 +56,24 @@ impl Address {
 }
 
 fn main() {
-    let listener = match init_server(Address::IPv4(String::from("127.0.0.1:7878"))) {
+    let config = match std::env::current_dir() {
+        Ok(mut path) => {
+            path.push("src");
+            path.push("config.toml");
+            match fs::read_to_string(&path) {
+                Ok(s) => match toml::from_str::<Config>(&s) {
+                    Ok(c) => c,
+                    Err(e) => panic!(
+                        "Failed to parse config.toml at {:?} into valid toml: {e}",
+                        path
+                    ),
+                },
+                Err(e) => panic!("Failed to read config.toml file at {:?}: {e}", path),
+            }
+        }
+        Err(e) => panic!("Failed to get current directory: {e}"),
+    };
+    let listener = match init_server(Address::IPv4(config.local_addr)) {
         Ok((tcp_listener, address)) => {
             println!("Server listening on '{}'", address.to_string());
             tcp_listener
@@ -61,7 +85,7 @@ fn main() {
     };
 
     let database = MockDatabase::new();
-    /*let database = match SqliteDatabase::new(DATABASE_URL) {
+    /*let database = match data::SqliteDatabase::new(&config.database_path) {
         Ok(db) => db,
         Err(error) => {
             println!("Failed to establish database connection. Error: {error}");
@@ -88,30 +112,47 @@ fn wait_for_connections(database: &dyn Database, listener: TcpListener) {
     listener
         .incoming()
         .for_each(|stream_result| match stream_result {
-            Ok(stream) => {
-                handle_connection(database, stream);
-            }
-            Err(error) => {
-                eprintln!("Error occured when establishing connection. Error: {error}");
-            }
+            Ok(stream) => handle_connection(database, stream),
+            Err(error) => eprintln!("Error occured when establishing connection. Error: {error}"),
         });
 }
 
 fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
-    //allocate a buffer
-    let mut buffer = [0; 1024]; //TODO: change size later
+    // allocate buffer to hold request
+    let mut buffer = vec![0; 1_500_000];
+    let mut total_bytes = 0;
+    let mut tries = 4;
 
-    //read the request from the stream to the buffer //TODO: add stream identifier for message
-    if let Err(error) = stream.read(&mut buffer) {
-        eprintln!("Failed to read from the stream. Error: {error}");
+    // read entire request to buffer until EOF is read
+    println!("Starting to read from stream");
+    loop {
+        match stream.read(&mut buffer[total_bytes..]) {
+            Ok(0) => {
+                tries -= 1;
+                if tries <= 0 {
+                    println!("Connection closed");
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            Ok(n) => {
+                tries = 3;
+                total_bytes += n;
+                // if end of buffer is delimiter
+                if total_bytes >= DELIMITER.len()
+                    && &buffer[total_bytes - DELIMITER.len()..total_bytes] == DELIMITER
+                {
+                    break;
+                }
+            }
+            Err(e) => eprintln!("Failed to read from the stream: {e}"),
+        }
     }
-
-    //println!("Request size: {}\nRequest: {}", buffer.len(), String::from_utf8_lossy(&buffer[..]));
+    println!("{total_bytes} total bytes read");
 
     //construct a request struct
-    let request = HttpRequest::from_request_bytes(&buffer);
-
-    //TODO: validate request credentials from header cookie and get user
+    let request = HttpRequest::from_request_bytes(&buffer[..total_bytes]);
+    let _ = fs::write("last_request.txt", request.to_string());
 
     //construct response from possible pathways
     let gen_view = |filename: &str| generate_html_response(String::from("src/views/") + filename);
@@ -169,7 +210,9 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                                 HttpResponse::forbidden()
                             } else {
                                 match database.get_users() {
-                                Ok(users) => HttpResponse::from_vec(json!({"users": users.iter().map(|user| user.get_username()).collect::<Vec<_>>()}).to_string()),
+                                Ok(users) => HttpResponse::from_vec(
+                                    json!({"users": users.iter().map(|user| user.get_username()).collect::<Vec<_>>()}).to_string()
+                                ),
                                 Err(_) => HttpResponse::bad_request("Failed to fetch users from database.")
                             }
                             }

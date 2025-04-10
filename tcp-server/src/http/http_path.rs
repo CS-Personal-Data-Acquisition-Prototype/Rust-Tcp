@@ -80,17 +80,6 @@ impl HttpPath {
         if subpath.is_empty() {
             return None;
         }
-        let result = subpath.split('/').nth(index+1);
-        let display_result = match result {
-            Some(str) => str,
-            None => "None",
-        };
-        println!(
-            "Subpath: {}, index: {}, result: {}",
-            subpath.to_string(),
-            index,
-            display_result
-        );
-        result
+        subpath.split('/').nth(index + 1)
     }
 }

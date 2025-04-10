@@ -1,6 +1,8 @@
 use serde_json::Value;
-use std::str;
+use std::{fs, str};
 use url::form_urlencoded;
+
+use crate::DELIMITER;
 
 use super::{HttpHeader, HttpMethod, HttpPath};
 
@@ -109,12 +111,17 @@ impl HttpRequest {
 
         let trim_body = String::from_utf8_lossy(&body_buffer[delimiter.len()..])
             .trim_end_matches('\0')
+            .trim_end_matches(&String::from_utf8_lossy(DELIMITER).to_string())
             .to_string();
 
         let body = match trim_body.len() > 0 {
             true => match serde_json::from_str::<Value>(&trim_body) {
                 Ok(value) => Some(value),
-                Err(_) => None,
+                Err(e) => {
+                    eprintln!("Failed to parse body to json value: {e}");
+                    let _ = fs::write("failed_parse.txt", trim_body);
+                    None
+                }
             },
             false => None,
         };
