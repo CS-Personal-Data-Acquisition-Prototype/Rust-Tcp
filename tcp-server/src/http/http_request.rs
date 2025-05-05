@@ -2,7 +2,7 @@ use serde_json::Value;
 use std::{fs, str};
 use url::form_urlencoded;
 
-use crate::DELIMITER;
+use crate::HTTP_HEADER_DELIMITER;
 
 use super::{HttpHeader, HttpMethod, HttpPath};
 
@@ -55,7 +55,7 @@ impl HttpRequest {
     pub fn from_request_bytes(buffer: &[u8]) -> Self {
         //split the request on delimiter to separate the header and body, on err assume no body and set whole buffer to header
         let delimiter = b"\r\n\r\n";
-        let (header, body_buffer) = buffer.split_at(
+        let (header, _body) = buffer.split_at(
             buffer
                 .windows(delimiter.len())
                 .position(|window| window == delimiter)
@@ -109,30 +109,35 @@ impl HttpRequest {
             )
         };
 
-        let trim_body = String::from_utf8_lossy(&body_buffer[delimiter.len()..])
-            .trim_end_matches('\0')
-            .trim_end_matches(&String::from_utf8_lossy(DELIMITER).to_string())
-            .to_string();
-
-        let body = match trim_body.len() > 0 {
-            true => match serde_json::from_str::<Value>(&trim_body) {
-                Ok(value) => Some(value),
-                Err(e) => {
-                    eprintln!("Failed to parse body to json value: {e}");
-                    let _ = fs::write("failed_parse.txt", trim_body);
-                    None
-                }
-            },
-            false => None,
-        };
-
         HttpRequest {
             method,
             path: HttpPath::from_string(path),
             parameters,
             headers,
-            body,
+            body: None,
         }
+    }
+
+    pub fn parse_body(&mut self, buffer: &[u8]) -> crate::Result<()> {
+        //trim delimiter and any extra whitespace
+        let trim_body = String::from_utf8_lossy(buffer)
+            .trim_end_matches('\0')
+            .trim_end_matches(&String::from_utf8_lossy(HTTP_HEADER_DELIMITER).to_string())
+            .to_string();
+
+        if trim_body.len() == 0 {
+            return Err("Failed to parse request body to utf8 string".to_string());
+        }
+
+        //parse buffer to Value object
+        self.body = match serde_json::from_str::<Value>(&trim_body) {
+            Ok(value) => Some(value),
+            Err(e) => {
+                let _ = fs::write("failed_parse.txt", trim_body);
+                return Err(format!("Failed to parse request body to json value: {e}"));
+            }
+        };
+        Ok(())
     }
 
     #[allow(unused)]

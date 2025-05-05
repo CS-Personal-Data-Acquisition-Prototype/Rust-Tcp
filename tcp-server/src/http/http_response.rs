@@ -42,7 +42,7 @@ impl HttpResponse {
     pub fn to_string(&self) -> String {
         format!(
             "HTTP/1.1 {}\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
-            self.status.to_string(),
+            self.status.as_str(),
             self.body.len(),
             self.headers.to_string(),
             self.body,

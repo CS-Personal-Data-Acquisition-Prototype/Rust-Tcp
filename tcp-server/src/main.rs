@@ -24,6 +24,7 @@ use std::net::{TcpListener, TcpStream};
 use std::str;
 
 use data::{Database, MockDatabase};
+use http::http_header::HttpHeaderType;
 use http::{HttpHeader, HttpMethod, HttpPath, HttpRequest, HttpResponse, HttpStatus};
 use models::{BaseModel, Sensor, Session, SessionSensor, SessionSensorData, User};
 use serde::Deserialize;
@@ -32,7 +33,7 @@ use serde_json::json;
 //Result generalization, could replace String with custom error enum
 type Result<T> = core::result::Result<T, String>;
 
-const DELIMITER: &[u8] = b"<EOF>";
+const HTTP_HEADER_DELIMITER: &[u8] = b"\r\n\r\n";
 
 #[allow(unused)]
 #[derive(Deserialize)]
@@ -119,141 +120,273 @@ fn wait_for_connections(database: &dyn Database, listener: TcpListener) {
 
 fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
     // allocate buffer to hold request
-    let mut buffer = vec![0; 1_500_000];
+    let mut buffer = vec![0; 1_024]; //1_500_000
     let mut total_bytes = 0;
     let mut tries = 4;
 
-    // read entire request to buffer until EOF is read
+    // read request to buffer until HTTP header delimiter is read
     println!("Starting to read from stream");
-    loop {
+    let request_option: Option<HttpRequest> = loop {
         match stream.read(&mut buffer[total_bytes..]) {
             Ok(0) => {
                 tries -= 1;
                 if tries <= 0 {
                     println!("Connection closed");
-                    break;
+                    break None;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(500));
             }
             Ok(n) => {
                 tries = 3;
                 total_bytes += n;
-                // if end of buffer is delimiter
-                if total_bytes >= DELIMITER.len()
-                    && &buffer[total_bytes - DELIMITER.len()..total_bytes] == DELIMITER
+
+                // if header delimiter is found
+                if let Some(delim_index) = buffer
+                    .windows(HTTP_HEADER_DELIMITER.len())
+                    .position(|window| window == HTTP_HEADER_DELIMITER)
+                    .map(|pos| pos + HTTP_HEADER_DELIMITER.len())
                 {
-                    break;
+                    //construct a request struct before reading the body
+                    let mut parsed_request = HttpRequest::from_request_bytes(&buffer[..delim_index]);
+
+                    let body_size = match parsed_request.headers.get(HttpHeaderType::ContentLength.as_str()) {
+                        Some(length) => {
+                            println!("LENGTH: {length}");
+                            match length.parse::<usize>() {
+                                Ok(num) => num,
+                                Err(e) => {
+                                    eprintln!("Failed to parse {} header to usize: {e}", HttpHeaderType::ContentLength.as_str());
+                                    break None;
+                                },
+                            }
+                        },
+                        None => {
+                            eprintln!("No {} header found", HttpHeaderType::ContentLength.as_str());
+                            break None;
+                        },
+                    };
+
+                    let body_recieved = total_bytes - delim_index;
+
+                    // read rest of body not recieved [total_bytes, body_size - body_recieved]
+                    if let Err(e) =
+                        stream.read_exact(&mut buffer[total_bytes..(total_bytes + body_size - body_recieved)])//TODO: may be off based on delimiter location and length
+                    {
+                        eprintln!(
+                            "Error encountered when reading {body_size} bytes from the stream: {e}"
+                        )
+                    }
+                    total_bytes += body_size - body_recieved;
+
+                    // add body into request struct
+                    if let Err(e) = parsed_request.parse_body(&buffer[delim_index..(delim_index+body_size)]) {
+                        eprintln!("Failed to parse request body: {e}");
+                    }
+                    let _ = fs::write("last_request.txt", parsed_request.to_string());
+
+                    break Some(parsed_request);
                 }
             }
             Err(e) => eprintln!("Failed to read from the stream: {e}"),
         }
-    }
+    };
     println!("{total_bytes} total bytes read");
 
-    //construct a request struct
-    let request = HttpRequest::from_request_bytes(&buffer[..total_bytes]);
-    let _ = fs::write("last_request.txt", request.to_string());
-
-    //construct response from possible pathways
-    let gen_view = |filename: &str| generate_html_response(String::from("src/views/") + filename);
-    let response = match request.path.clone() {
-        HttpPath::Index(_subpath) => gen_view("index.html"),
-        HttpPath::NotFound(path) => HttpResponse::json_404(&path),
-        HttpPath::Authentication(subpath) => match request.method {
-            HttpMethod::Post => match subpath.as_str() {
-                "/login" => match request.body {
-                    Some(json) => match User::from_json(json) {
-                        Ok(user) => match database.login(&user) {
-                            Ok(session_id) => HttpResponse::new(
-                                HttpStatus::NoContent,
-                                HttpHeader::default_json().set_session(session_id),
-                                String::new(),
-                            ),
-                            Err(_) => HttpResponse::not_authorized(),
+    let response = match request_option {
+        None => HttpResponse::bad_request("Failed to parse request on the server."),
+        Some(request) => {
+            //construct response from possible pathways
+            let gen_view = |filename: &str| generate_html_response(String::from("src/views/") + filename);
+            match request.path.clone() {
+                HttpPath::Index(_subpath) => gen_view("index.html"),
+                HttpPath::NotFound(path) => HttpResponse::json_404(&path),
+                HttpPath::Authentication(subpath) => match request.method {
+                    HttpMethod::Post => match subpath.as_str() {
+                        "/login" => match request.body {
+                            Some(json) => match User::from_json(json) {
+                                Ok(user) => match database.login(&user) {
+                                    Ok(session_id) => HttpResponse::new(
+                                        HttpStatus::NoContent,
+                                        HttpHeader::default_json().set_session(session_id),
+                                        String::new(),
+                                    ),
+                                    Err(_) => HttpResponse::not_authorized(),
+                                },
+                                Err(msg) => HttpResponse::invalid_body(Some(&msg)),
+                            },
+                            None => HttpResponse::missing_body(Some(User::REQUIRED_VALUES)),
                         },
-                        Err(msg) => HttpResponse::invalid_body(Some(&msg)),
-                    },
-                    None => HttpResponse::missing_body(Some(User::REQUIRED_VALUES)),
-                },
-                "/logout" => match request.headers.get_cookie(HttpHeader::SESSION_ID) {
-                    Some(session_id) => match database.logout(&session_id) {
-                        Ok(_) => HttpResponse::new(
-                            HttpStatus::NoContent,
-                            HttpHeader::default_json().set_session(String::new()),
-                            String::new(),
-                        ),
-                        Err(_) => HttpResponse::json_404("Session"),
-                    },
-                    None => HttpResponse::not_authorized(),
-                },
-                "/renew" => match request.headers.get_cookie(HttpHeader::SESSION_ID) {
-                    Some(session_id) => match database.renew_session(&session_id) {
-                        Ok(new_session_id) => HttpResponse::new(
-                            HttpStatus::NoContent,
-                            HttpHeader::default_json().set_session(new_session_id),
-                            String::new(),
-                        ),
-                        Err(_) => HttpResponse::json_404("Session"),
-                    },
-                    None => HttpResponse::not_authorized(),
-                },
-                _ => HttpResponse::json_404(&request.path.to_string()),
-            },
-            _ => HttpResponse::json_404(&request.path.to_string()),
-        },
-        HttpPath::User(subpath) => match request.method {
-            HttpMethod::Get => match HttpPath::subsection(&subpath, 0) {
-                None => match request.headers.get_cookie(HttpHeader::SESSION_ID) {
-                    Some(session_id) => match database.get_session_user(&session_id) {
-                        Ok(user) => {
-                            if !database.is_admin(&user) {
-                                HttpResponse::forbidden()
-                            } else {
-                                match database.get_users() {
-                                Ok(users) => HttpResponse::from_vec(
-                                    json!({"users": users.iter().map(|user| user.get_username()).collect::<Vec<_>>()}).to_string()
+                        "/logout" => match request.headers.get_cookie(HttpHeaderType::SessionID.as_str()) {
+                            Some(session_id) => match database.logout(&session_id) {
+                                Ok(_) => HttpResponse::new(
+                                    HttpStatus::NoContent,
+                                    HttpHeader::default_json().set_session(String::new()),
+                                    String::new(),
                                 ),
-                                Err(_) => HttpResponse::bad_request("Failed to fetch users from database.")
-                            }
-                            }
-                        }
-                        Err(_) => HttpResponse::not_authorized(),
+                                Err(_) => HttpResponse::json_404("Session"),
+                            },
+                            None => HttpResponse::not_authorized(),
+                        },
+                        "/renew" => match request.headers.get_cookie(HttpHeaderType::SessionID.as_str()) {
+                            Some(session_id) => match database.renew_session(&session_id) {
+                                Ok(new_session_id) => HttpResponse::new(
+                                    HttpStatus::NoContent,
+                                    HttpHeader::default_json().set_session(new_session_id),
+                                    String::new(),
+                                ),
+                                Err(_) => HttpResponse::json_404("Session"),
+                            },
+                            None => HttpResponse::not_authorized(),
+                        },
+                        _ => HttpResponse::json_404(&request.path.to_string()),
                     },
-                    None => HttpResponse::not_authorized(),
+                    _ => HttpResponse::json_404(&request.path.to_string()),
                 },
-                Some("profile") => match request.headers.get_cookie(HttpHeader::SESSION_ID) {
-                    Some(session_id) => match database.get_session_user(&session_id) {
-                        Ok(user) => user.to_ok_response(),
-                        Err(_) => HttpResponse::json_404("User"),
-                    },
-                    None => HttpResponse::not_authorized(),
-                },
-                Some(username) => match database.get_user(username) {
-                    Ok(user) => user.to_ok_response(),
-                    Err(_) => HttpResponse::json_404(&request.path.to_string()),
-                },
-            },
-            HttpMethod::Post => User::insert_model(database, request.body),
-            HttpMethod::Patch => User::update_model(database, &subpath, request.body),
-            HttpMethod::Delete => User::delete_model(database, &subpath),
-            HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
-        },
-        HttpPath::Sensor(subpath) => {
-            match request.method {
-                HttpMethod::Get => {
-                    match HttpPath::subsection(&subpath, 0) {
-                        None => match request.headers.get_cookie(HttpHeader::SESSION_ID) {
+                HttpPath::User(subpath) => match request.method {
+                    HttpMethod::Get => match HttpPath::subsection(&subpath, 0) {
+                        None => match request.headers.get_cookie(HttpHeaderType::SessionID.as_str()) {
                             Some(session_id) => match database.get_session_user(&session_id) {
                                 Ok(user) => {
                                     if !database.is_admin(&user) {
                                         HttpResponse::forbidden()
                                     } else {
-                                        match database.get_sensors() {
-                                            Ok(sensors) => HttpResponse::from_vec(json!({"sensors": sensors.iter().map(|sensor| json!({
-                                                "id": sensor.get_id(),
-                                                "type": sensor.get_sensor_type()
-                                            })).collect::<Vec<_>>()}).to_string()),
-                                            Err(_) => HttpResponse::bad_request("failed to fetch sensors from database."),
+                                        match database.get_users() {
+                                        Ok(users) => HttpResponse::from_vec(
+                                            json!({"users": users.iter().map(|user| user.get_username()).collect::<Vec<_>>()}).to_string()
+                                        ),
+                                        Err(_) => HttpResponse::bad_request("Failed to fetch users from database.")
+                                    }
+                                    }
+                                }
+                                Err(_) => HttpResponse::not_authorized(),
+                            },
+                            None => HttpResponse::not_authorized(),
+                        },
+                        Some("profile") => match request.headers.get_cookie(HttpHeaderType::SessionID.as_str()) {
+                            Some(session_id) => match database.get_session_user(&session_id) {
+                                Ok(user) => user.to_ok_response(),
+                                Err(_) => HttpResponse::json_404("User"),
+                            },
+                            None => HttpResponse::not_authorized(),
+                        },
+                        Some(username) => match database.get_user(username) {
+                            Ok(user) => user.to_ok_response(),
+                            Err(_) => HttpResponse::json_404(&request.path.to_string()),
+                        },
+                    },
+                    HttpMethod::Post => User::insert_model(database, request.body),
+                    HttpMethod::Patch => User::update_model(database, &subpath, request.body),
+                    HttpMethod::Delete => User::delete_model(database, &subpath),
+                    HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
+                },
+                HttpPath::Sensor(subpath) => {
+                    match request.method {
+                        HttpMethod::Get => {
+                            match HttpPath::subsection(&subpath, 0) {
+                                None => match request.headers.get_cookie(HttpHeaderType::SessionID.as_str()) {
+                                    Some(session_id) => match database.get_session_user(&session_id) {
+                                        Ok(user) => {
+                                            if !database.is_admin(&user) {
+                                                HttpResponse::forbidden()
+                                            } else {
+                                                match database.get_sensors() {
+                                                    Ok(sensors) => HttpResponse::from_vec(json!({"sensors": sensors.iter().map(|sensor| json!({
+                                                        "id": sensor.get_id(),
+                                                        "type": sensor.get_sensor_type()
+                                                    })).collect::<Vec<_>>()}).to_string()),
+                                                    Err(_) => HttpResponse::bad_request("failed to fetch sensors from database."),
+                                                }
+                                            }
+                                        }
+                                        Err(_) => HttpResponse::not_authorized(),
+                                    },
+                                    None => HttpResponse::not_authorized(),
+                                },
+                                Some(sensor_id) => match database.get_sensor(sensor_id) {
+                                    Ok(sensor) => sensor.to_ok_response(),
+                                    Err(_) => HttpResponse::json_404(&request.path.to_string()),
+                                },
+                            }
+                        }
+                        HttpMethod::Post => Sensor::insert_model(database, request.body),
+                        HttpMethod::Patch => Sensor::update_model(database, &subpath, request.body),
+                        HttpMethod::Delete => Sensor::delete_model(database, &subpath),
+                        HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
+                    }
+                }
+                HttpPath::Session(subpath) => {
+                    match request.method {
+                        HttpMethod::Get => match HttpPath::subsection(&subpath, 0) {
+                            None => match request.headers.get_cookie(HttpHeaderType::SessionID.as_str()) {
+                                Some(session_id) => match database.get_session_user(&session_id) {
+                                    Ok(user) => {
+                                        if !database.is_admin(&user) {
+                                            HttpResponse::forbidden()
+                                        } else {
+                                            match database.get_all_sessions() {
+                                        Ok(sessions) => HttpResponse::from_vec(json!({"sessions": sessions.iter().map(|session| json!({
+                                            "session_id": session.get_id(),
+                                            "username": session.get_username()
+                                        })).collect::<Vec<_>>()}).to_string()),
+                                        Err(_) => HttpResponse::bad_request("failed to fetch sessions from the database."),
+                                    }
+                                        }
+                                    }
+                                    Err(_) => HttpResponse::not_authorized(),
+                                },
+                                None => HttpResponse::not_authorized(),
+                            },
+                            Some("user") => match HttpPath::subsection(&subpath, 1) {
+                                Some(username) => match database.get_user_sessions(&username) {
+                                    Ok(sessions) => HttpResponse::from_vec(
+                                        json!({"sessions": sessions.iter().map(|session| json!({
+                                        "session_id": session.get_id(),
+                                        "username": session.get_username()
+                                    })).collect::<Vec<_>>()})
+                                        .to_string(),
+                                    ),
+                                    Err(_) => HttpResponse::bad_request(
+                                        "failed to fetch user sessions from the database.",
+                                    ),
+                                },
+                                None => HttpResponse::json_404(&request.path.to_string()),
+                            },
+                            Some("id") => match HttpPath::subsection(&subpath, 1) {
+                                Some(session_id) => match database.get_session(&session_id) {
+                                    Ok(session) => session.to_ok_response(),
+                                    Err(_) => HttpResponse::bad_request(
+                                        "failed to fetch session from the database.",
+                                    ),
+                                },
+                                None => HttpResponse::json_404(&request.path.to_string()),
+                            },
+                            _ => HttpResponse::json_404(&request.path.to_string()),
+                        },
+                        HttpMethod::Post => Session::insert_model(database, request.body),
+                        HttpMethod::Patch => Session::update_model(database, &subpath, request.body),
+                        HttpMethod::Delete => Session::delete_model(database, &subpath),
+                        HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
+                    }
+                }
+                HttpPath::SessionSensor(subpath) => match request.method {
+                    HttpMethod::Get => match HttpPath::subsection(&subpath, 0) {
+                        None => match request.headers.get_cookie(HttpHeaderType::SessionID.as_str()) {
+                            Some(session_id) => match database.get_session_user(&session_id) {
+                                Ok(user) => {
+                                    if !database.is_admin(&user) {
+                                        HttpResponse::forbidden()
+                                    } else {
+                                        match database.get_sessions_sensors() {
+                                            Ok(sessions_sensors) => HttpResponse::from_vec(json!({"sessions_sensors": sessions_sensors.iter().map(|session_sensor| {
+                                                json!({
+                                                    "id": session_sensor.get_id(),
+                                                    "session_id": session_sensor.get_session_id(),
+                                                    "sensor_id": session_sensor.get_sensor_id(),
+                                                })
+                                            }).collect::<Vec<_>>()}).to_string()),
+                                            Err(_) => HttpResponse::bad_request(
+                                                "failed to fetch sessions sensors from the database.",
+                                            ),
                                         }
                                     }
                                 }
@@ -261,198 +394,108 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                             },
                             None => HttpResponse::not_authorized(),
                         },
-                        Some(sensor_id) => match database.get_sensor(sensor_id) {
-                            Ok(sensor) => sensor.to_ok_response(),
-                            Err(_) => HttpResponse::json_404(&request.path.to_string()),
+                        Some("session") => match HttpPath::subsection(&subpath, 1) {
+                            Some(session_id) => match database.get_session_sensors(session_id) {
+                                Ok(session_sensors) => HttpResponse::from_vec(json!({"sessions_sensors": session_sensors.iter().map(|session_sensor| {
+                                    json!({
+                                        "id": session_sensor.get_id(),
+                                        "session_id": session_sensor.get_session_id(),
+                                        "sensor_id": session_sensor.get_sensor_id(),
+                                    })
+                                }).collect::<Vec<_>>()}).to_string()),
+                                Err(_) => HttpResponse::bad_request(
+                                    "failed to fetch session sensors from the database.",
+                                ),
+                            },
+                            None => HttpResponse::json_404(&request.path.to_string()),
                         },
-                    }
-                }
-                HttpMethod::Post => Sensor::insert_model(database, request.body),
-                HttpMethod::Patch => Sensor::update_model(database, &subpath, request.body),
-                HttpMethod::Delete => Sensor::delete_model(database, &subpath),
-                HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
-            }
-        }
-        HttpPath::Session(subpath) => {
-            match request.method {
-                HttpMethod::Get => match HttpPath::subsection(&subpath, 0) {
-                    None => match request.headers.get_cookie(HttpHeader::SESSION_ID) {
-                        Some(session_id) => match database.get_session_user(&session_id) {
-                            Ok(user) => {
-                                if !database.is_admin(&user) {
-                                    HttpResponse::forbidden()
-                                } else {
-                                    match database.get_all_sessions() {
-                                Ok(sessions) => HttpResponse::from_vec(json!({"sessions": sessions.iter().map(|session| json!({
-                                    "session_id": session.get_id(),
-                                    "username": session.get_username()
-                                })).collect::<Vec<_>>()}).to_string()),
-                                Err(_) => HttpResponse::bad_request("failed to fetch sessions from the database."),
-                            }
-                                }
-                            }
-                            Err(_) => HttpResponse::not_authorized(),
-                        },
-                        None => HttpResponse::not_authorized(),
-                    },
-                    Some("user") => match HttpPath::subsection(&subpath, 1) {
-                        Some(username) => match database.get_user_sessions(&username) {
-                            Ok(sessions) => HttpResponse::from_vec(
-                                json!({"sessions": sessions.iter().map(|session| json!({
-                                "session_id": session.get_id(),
-                                "username": session.get_username()
-                            })).collect::<Vec<_>>()})
-                                .to_string(),
-                            ),
-                            Err(_) => HttpResponse::bad_request(
-                                "failed to fetch user sessions from the database.",
-                            ),
-                        },
-                        None => HttpResponse::json_404(&request.path.to_string()),
-                    },
-                    Some("id") => match HttpPath::subsection(&subpath, 1) {
-                        Some(session_id) => match database.get_session(&session_id) {
-                            Ok(session) => session.to_ok_response(),
-                            Err(_) => HttpResponse::bad_request(
-                                "failed to fetch session from the database.",
-                            ),
-                        },
-                        None => HttpResponse::json_404(&request.path.to_string()),
-                    },
-                    _ => HttpResponse::json_404(&request.path.to_string()),
-                },
-                HttpMethod::Post => Session::insert_model(database, request.body),
-                HttpMethod::Patch => Session::update_model(database, &subpath, request.body),
-                HttpMethod::Delete => Session::delete_model(database, &subpath),
-                HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
-            }
-        }
-        HttpPath::SessionSensor(subpath) => match request.method {
-            HttpMethod::Get => match HttpPath::subsection(&subpath, 0) {
-                None => match request.headers.get_cookie(HttpHeader::SESSION_ID) {
-                    Some(session_id) => match database.get_session_user(&session_id) {
-                        Ok(user) => {
-                            if !database.is_admin(&user) {
-                                HttpResponse::forbidden()
-                            } else {
-                                match database.get_sessions_sensors() {
-                                    Ok(sessions_sensors) => HttpResponse::from_vec(json!({"sessions_sensors": sessions_sensors.iter().map(|session_sensor| {
-                                        json!({
-                                            "id": session_sensor.get_id(),
-                                            "session_id": session_sensor.get_session_id(),
-                                            "sensor_id": session_sensor.get_sensor_id(),
-                                        })
-                                    }).collect::<Vec<_>>()}).to_string()),
-                                    Err(_) => HttpResponse::bad_request(
-                                        "failed to fetch sessions sensors from the database.",
-                                    ),
-                                }
-                            }
+                        Some("session-sensor") => match HttpPath::subsection(&subpath, 1) {
+                            Some(session_sensor_id) => match database.get_session_sensor(session_sensor_id) {
+                                Ok(session_sensor) => session_sensor.to_ok_response(),
+                                Err(_) => HttpResponse::bad_request(
+                                    "failed to fetch session sensor from the database.",
+                                ),
+                            },
+                            None => HttpResponse::json_404(&request.path.to_string()),
                         }
-                        Err(_) => HttpResponse::not_authorized(),
+                        _ => HttpResponse::json_404(&request.path.to_string()),
                     },
-                    None => HttpResponse::not_authorized(),
+                    HttpMethod::Post => SessionSensor::insert_model(database, request.body),
+                    HttpMethod::Patch => SessionSensor::update_model(database, &subpath, request.body),
+                    HttpMethod::Delete => SessionSensor::delete_model(database, &subpath),
+                    HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
                 },
-                Some("session") => match HttpPath::subsection(&subpath, 1) {
-                    Some(session_id) => match database.get_session_sensors(session_id) {
-                        Ok(session_sensors) => HttpResponse::from_vec(json!({"sessions_sensors": session_sensors.iter().map(|session_sensor| {
-                            json!({
-                                "id": session_sensor.get_id(),
-                                "session_id": session_sensor.get_session_id(),
-                                "sensor_id": session_sensor.get_sensor_id(),
-                            })
-                        }).collect::<Vec<_>>()}).to_string()),
-                        Err(_) => HttpResponse::bad_request(
-                            "failed to fetch session sensors from the database.",
-                        ),
-                    },
-                    None => HttpResponse::json_404(&request.path.to_string()),
-                },
-                Some("session-sensor") => match HttpPath::subsection(&subpath, 1) {
-                    Some(session_sensor_id) => match database.get_session_sensor(session_sensor_id) {
-                        Ok(session_sensor) => session_sensor.to_ok_response(),
-                        Err(_) => HttpResponse::bad_request(
-                            "failed to fetch session sensor from the database.",
-                        ),
-                    },
-                    None => HttpResponse::json_404(&request.path.to_string()),
-                }
-                _ => HttpResponse::json_404(&request.path.to_string()),
-            },
-            HttpMethod::Post => SessionSensor::insert_model(database, request.body),
-            HttpMethod::Patch => SessionSensor::update_model(database, &subpath, request.body),
-            HttpMethod::Delete => SessionSensor::delete_model(database, &subpath),
-            HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
-        },
-        HttpPath::SessionSensorData(subpath) => match request.method {
-            HttpMethod::Get => match HttpPath::subsection(&subpath, 0) {
-                None => match request.headers.get_cookie(HttpHeader::SESSION_ID) {
-                    Some(session_id) => match database.get_session_user(&session_id) {
-                        Ok(user) => {
-                            if !database.is_admin(&user) {
-                                HttpResponse::forbidden()
-                            } else {
-                                match database.get_sessions_sensors_data() {
-                                Ok(sessions_sensors_data) => HttpResponse::from_vec(json!({ "datapoints": sessions_sensors_data.iter().map(|session_sensor_data| {
+                HttpPath::SessionSensorData(subpath) => match request.method {
+                    HttpMethod::Get => match HttpPath::subsection(&subpath, 0) {
+                        None => match request.headers.get_cookie(HttpHeaderType::SessionID.as_str()) {
+                            Some(session_id) => match database.get_session_user(&session_id) {
+                                Ok(user) => {
+                                    if !database.is_admin(&user) {
+                                        HttpResponse::forbidden()
+                                    } else {
+                                        match database.get_sessions_sensors_data() {
+                                        Ok(sessions_sensors_data) => HttpResponse::from_vec(json!({ "datapoints": sessions_sensors_data.iter().map(|session_sensor_data| {
+                                            json!({
+                                                "id": session_sensor_data.get_id(),
+                                                "datetime": session_sensor_data.get_datetime(),
+                                                "data_blob": session_sensor_data.get_blob(),
+                                            })
+                                        }).collect::<Vec<_>>()}).to_string()),
+                                        Err(_) => todo!(),
+                                    }
+                                    }
+                                }
+                                Err(_) => HttpResponse::not_authorized(),
+                            },
+                            None => HttpResponse::not_authorized(),
+                        },
+                        Some("session") => match HttpPath::subsection(&subpath, 1) {
+                            Some(session_id) => match database.get_sessions_sensor_data(session_id) {
+                                Ok(sessions_sensor_data) => HttpResponse::from_vec(json!({ "datapoints": sessions_sensor_data.iter().map(|session_sensor_data| {
                                     json!({
                                         "id": session_sensor_data.get_id(),
                                         "datetime": session_sensor_data.get_datetime(),
                                         "data_blob": session_sensor_data.get_blob(),
                                     })
                                 }).collect::<Vec<_>>()}).to_string()),
-                                Err(_) => todo!(),
-                            }
-                            }
-                        }
-                        Err(_) => HttpResponse::not_authorized(),
+                                Err(_) => HttpResponse::json_404(&request.path.to_string()),
+                            },
+                            None => HttpResponse::json_404(&request.path.to_string()),
+                        },
+                        Some("id") => match HttpPath::subsection(&subpath, 1) {
+                            Some(session_sensor_id) => match database.get_session_sensor_data(session_sensor_id) {
+                                Ok(session_sensor_data) => HttpResponse::from_vec(json!({ "datapoints": session_sensor_data.iter().map(|session_sensor_data| {
+                                    json!({
+                                        "id": session_sensor_data.get_id(),
+                                        "datetime": session_sensor_data.get_datetime(),
+                                        "data_blob": session_sensor_data.get_blob(),
+                                    })
+                                }).collect::<Vec<_>>()}).to_string()),
+                                Err(_) => HttpResponse::json_404(&request.path.to_string()),
+                            },
+                            None => HttpResponse::json_404(&request.path.to_string()),
+                        },
+                        Some(session_sensor_id) => match HttpPath::subsection(&subpath, 1) {
+                            Some(datetime) => match database.get_session_sensor_datapoint(session_sensor_id, datetime) {
+                                Ok(datapoint) => datapoint.to_ok_response(),
+                                Err(_) => HttpResponse::json_404(&request.path.to_string()),
+                            },
+                            None => HttpResponse::json_404(&request.path.to_string()),
+                        },
                     },
-                    None => HttpResponse::not_authorized(),
-                },
-                Some("session") => match HttpPath::subsection(&subpath, 1) {
-                    Some(session_id) => match database.get_sessions_sensor_data(session_id) {
-                        Ok(sessions_sensor_data) => HttpResponse::from_vec(json!({ "datapoints": sessions_sensor_data.iter().map(|session_sensor_data| {
-                            json!({
-                                "id": session_sensor_data.get_id(),
-                                "datetime": session_sensor_data.get_datetime(),
-                                "data_blob": session_sensor_data.get_blob(),
-                            })
-                        }).collect::<Vec<_>>()}).to_string()),
-                        Err(_) => HttpResponse::json_404(&request.path.to_string()),
+                    HttpMethod::Post => match subpath.as_str() {
+                        "" => SessionSensorData::insert_model(database, request.body),
+                        "/batch" => SessionSensorData::try_batch_model(database, request.body),
+                        _ => HttpResponse::json_404(&request.path.to_string()),
                     },
-                    None => HttpResponse::json_404(&request.path.to_string()),
+                    HttpMethod::Patch => SessionSensorData::update_model(database, &subpath, request.body),
+                    HttpMethod::Delete => SessionSensorData::delete_model(database, &subpath),
+                    HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
                 },
-                Some("id") => match HttpPath::subsection(&subpath, 1) {
-                    Some(session_sensor_id) => match database.get_session_sensor_data(session_sensor_id) {
-                        Ok(session_sensor_data) => HttpResponse::from_vec(json!({ "datapoints": session_sensor_data.iter().map(|session_sensor_data| {
-                            json!({
-                                "id": session_sensor_data.get_id(),
-                                "datetime": session_sensor_data.get_datetime(),
-                                "data_blob": session_sensor_data.get_blob(),
-                            })
-                        }).collect::<Vec<_>>()}).to_string()),
-                        Err(_) => HttpResponse::json_404(&request.path.to_string()),
-                    },
-                    None => HttpResponse::json_404(&request.path.to_string()),
-                },
-                Some(session_sensor_id) => match HttpPath::subsection(&subpath, 1) {
-                    Some(datetime) => match database.get_session_sensor_datapoint(session_sensor_id, datetime) {
-                        Ok(datapoint) => datapoint.to_ok_response(),
-                        Err(_) => HttpResponse::json_404(&request.path.to_string()),
-                    },
-                    None => HttpResponse::json_404(&request.path.to_string()),
-                },
-            },
-            HttpMethod::Post => match subpath.as_str() {
-                "" => SessionSensorData::insert_model(database, request.body),
-                "/batch" => SessionSensorData::try_batch_model(database, request.body),
-                _ => HttpResponse::json_404(&request.path.to_string()),
-            },
-            HttpMethod::Patch => SessionSensorData::update_model(database, &subpath, request.body),
-            HttpMethod::Delete => SessionSensorData::delete_model(database, &subpath),
-            HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
+            }
         },
     };
-
+    
     //send generated response //TODO: add stream identifier for error message
     if let Err(error) = response.send(stream) {
         eprintln!("Failed to send response to stream. Error: {error}")
