@@ -4,18 +4,24 @@ use rusqlite::{params, Connection};
 use super::Database;
 type Result<T> = crate::Result<T>;
 
-#[allow(unused)]
 pub struct SqliteDatabase {
     url: String,
     connection: Connection,
 }
 
 impl SqliteDatabase {
-    #[allow(unused)]
     pub fn new(url: &str) -> Result<SqliteDatabase> {
         let connection = Connection::open(url).map_err(|e| e.to_string())?;
         Ok(SqliteDatabase {
             url: url.to_string(),
+            connection,
+        })
+    }
+
+    // Constructor for use with testing functions
+    pub fn from_connection(connection: Connection) -> Result<SqliteDatabase> {
+        Ok(SqliteDatabase {
+            url: ":memory:".to_string(),
             connection,
         })
     }
@@ -24,46 +30,25 @@ impl SqliteDatabase {
 //TODO: impl Database for SqliteDatabase {}
 impl Database for SqliteDatabase {
     /* Authentication */
-    // Returns a row from User where sessionID matches
-    fn get_session_user(&self, session_id: &str) -> Result<User> {
-        let mut statement = self
-            .connection
-            .prepare(
-                "SELECT User.username, User.password_hash
-             FROM Session
-             JOIN User ON Session.username = User.username
-             WHERE Session.sessionID = ?1",
-            )
-            .map_err(|e| e.to_string())?;
-
-        let user = statement
-            .query_row(params![session_id], |row| {
-                Ok(User::new(row.get(0)?, row.get(1)?))
-            })
-            .map_err(|e| e.to_string())?;
-
-        Ok(user)
-    }
-
     // TODO: Implement
     // No column for admin
     fn is_admin(&self, _user: &User) -> bool {
-        unimplemented!()
+        todo!()
     }
 
     // TODO: Implement
     fn login(&self, _user: &User) -> Result<String> {
-        unimplemented!()
+        todo!()
     }
 
     // TODO: Implement
     fn logout(&self, _session_id: &str) -> Result<()> {
-        unimplemented!()
+        todo!()
     }
 
     // TODO: Implement
     fn renew_session(&self, _old_session: &str) -> Result<String> {
-        unimplemented!()
+        todo!()
     }
 
     /* User */
@@ -116,14 +101,35 @@ impl Database for SqliteDatabase {
         Ok(user)
     }
 
-    // TODO: Implement
-    fn update_user(&self, _username: &str, _updated_user: &User) -> Result<User> {
-        todo!()
+    // Updates a user's information (note: username is the primary key and cannot be changed)
+    fn update_user(&self, username: &str, updated_user: &User) -> Result<User> {
+        let rows_updated = self.connection
+            .execute(
+                "UPDATE User SET password_hash = ?1 WHERE username = ?2",
+                params![updated_user.get_password_hash(), username],
+            )
+            .map_err(|e| e.to_string())?;
+
+        if rows_updated == 0 {
+            return Err("Failed to update User".into());
+        }
+
+        Ok(updated_user.clone())
     }
 
-    // TODO: Implement
-    fn delete_user(&self, _username: &str) -> Result<()> {
-        todo!()
+    fn delete_user(&self, username: &str) -> Result<()> {
+        let rows_updated = self.connection
+            .execute(
+                "DELETE FROM User WHERE username = ?1",
+                params![username],
+            )
+            .map_err(|e| e.to_string())?;
+
+        if rows_updated == 0 {
+            return Err("Failed to delete from User".into());
+        }
+
+        Ok(())
     }
 
     /* Sensor */
@@ -175,14 +181,34 @@ impl Database for SqliteDatabase {
         Ok(sensor)
     }
 
-    // TODO: Implement
-    fn update_sensor(&self, _sensor_id: &str, _updated_sensor: &Sensor) -> Result<Sensor> {
-        todo!()
+    fn update_sensor(&self, sensor_id: &str, updated_sensor: &Sensor) -> Result<Sensor> {
+        let rows_updated = self.connection
+            .execute(
+                "UPDATE Sensor SET type = ?1 WHERE sensorID = ?2",
+                params![updated_sensor.get_sensor_type(), sensor_id],
+            )
+            .map_err(|e| e.to_string())?;
+
+        if rows_updated == 0 {
+            return Err("Failed to update Sensor".into());
+        }
+
+        Ok(updated_sensor.clone())
     }
 
-    // TODO: Implement
-    fn delete_sensor(&self, _sensor_id: &str) -> Result<()> {
-        todo!()
+    fn delete_sensor(&self, sensor_id: &str) -> Result<()> {
+        let rows_updated = self.connection
+            .execute(
+                "DELETE FROM Sensor WHERE sensorID = ?1",
+                params![sensor_id],
+            )
+            .map_err(|e| e.to_string())?;
+
+        if rows_updated == 0 {
+            return Err("Failed to delete from Sensor".into());
+        }
+
+        Ok(())
     }
 
     /* Session */
@@ -212,6 +238,27 @@ impl Database for SqliteDatabase {
             .map_err(|e| e.to_string())?;
 
         Ok(session)
+    }
+
+    // Returns a row from User where sessionID matches
+    fn get_session_user(&self, session_id: &str) -> Result<User> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT User.username, User.password_hash
+             FROM Session
+             JOIN User ON Session.username = User.username
+             WHERE Session.sessionID = ?1",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let user = statement
+            .query_row(params![session_id], |row| {
+                Ok(User::new(row.get(0)?, row.get(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+
+        Ok(user)
     }
 
     // Returns rows from Session where username matches
@@ -256,14 +303,34 @@ impl Database for SqliteDatabase {
         Ok(session_vec)
     }
 
-    // TODO: Implement
-    fn update_session(&self, _session_id: &str, _updated_session: &Session) -> Result<Session> {
-        todo!()
+    fn update_session(&self, session_id: &str, updated_session: &Session) -> Result<Session> {
+        let rows_updated = self.connection
+            .execute(
+                "UPDATE Session SET username = ?1 WHERE sessionID = ?2",
+                params![updated_session.get_username(), session_id],
+            )
+            .map_err(|e| e.to_string())?;
+
+        if rows_updated == 0 {
+            return Err("Failed to update Session".into());
+        }
+
+        Ok(updated_session.clone())
     }
 
-    // TODO: Implement
-    fn delete_session(&self, _session_id: &str) -> Result<()> {
-        todo!()
+    fn delete_session(&self, session_id: &str) -> Result<()> {
+        let rows_updated = self.connection
+            .execute(
+                "DELETE FROM Session WHERE sessionID = ?1",
+                params![session_id],
+            )
+            .map_err(|e| e.to_string())?;
+
+        if rows_updated == 0 {
+            return Err("Failed to delete from Session".into());
+        }
+
+        Ok(())
     }
 
     /* Session Sensor */
@@ -343,15 +410,28 @@ impl Database for SqliteDatabase {
     // TODO: Implement
     fn update_session_sensor(
         &self,
-        _session_sensor_id: &str,
-        _updated_session_sensor: &SessionSensor,
+        session_sensor_id: &str,
+        updated_session_sensor: &SessionSensor,
     ) -> Result<SessionSensor> {
-        unimplemented!()
+        let rows_updated = self.connection
+            .execute(
+                "UPDATE Session_Sensor SET sessionID = ?1, sensorID = ?2 WHERE session_sensorID = ?3",
+                params![updated_session_sensor.get_session_id(),
+                    updated_session_sensor.get_sensor_id(),
+                    session_sensor_id],
+            )
+            .map_err(|e| e.to_string())?;
+
+        if rows_updated == 0 {
+            return Err("Failed to update Session_Sensor".into());
+        }
+
+        Ok(updated_session_sensor.clone())
     }
 
     // TODO: Implement
     fn delete_session_sensor(&self, _session_sensor_id: &str) -> Result<()> {
-        unimplemented!()
+        todo!()
     }
 
     /* Session Sensor Data */
