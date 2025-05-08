@@ -152,7 +152,7 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                     let body_size = match parsed_request.headers.get(HttpHeaderType::ContentLength.as_str()) {
                         Some(length) => {
                             println!("LENGTH: {length}");
-                            match length.parse::<usize>() {
+                            match length.trim().parse::<usize>() {
                                 Ok(num) => num,
                                 Err(e) => {
                                     eprintln!("Failed to parse {} header to usize: {e}", HttpHeaderType::ContentLength.as_str());
