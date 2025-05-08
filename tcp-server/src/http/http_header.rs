@@ -36,8 +36,8 @@ impl HttpHeaderType {
     pub const fn as_str(&self) -> &'static str {
         match self {
             HttpHeaderType::SessionID => "session_id",
-            HttpHeaderType::Cookie => "Cookie",
-            HttpHeaderType::ContentLength => "Content-Length",
+            HttpHeaderType::Cookie => "cookie",
+            HttpHeaderType::ContentLength => "content-length",
         }
     }
 }
