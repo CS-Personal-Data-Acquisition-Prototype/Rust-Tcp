@@ -57,7 +57,7 @@ impl SessionSensorData {
                     {
                         Ok(data) => match database.batch_session_sensor_data(&data) {
                             Ok(_) => {
-                                println!("Data batch recieved to DB");
+                                println!("Data batch recieved to DB\n");
                                 HttpResponse::no_content()
                             }
                             Err(_) => HttpResponse::bad_request(msg.unwrap()),

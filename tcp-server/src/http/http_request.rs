@@ -20,7 +20,7 @@ impl HttpRequest {
     pub fn to_string(&self) -> String {
         format!(
             "{} {}{} HTTP/1.1\r\n{}\r\n\r\n{:#?}",
-            self.method.to_string(),
+            self.method.as_str(),
             self.path.to_string(),
             self.parameters_to_string(),
             self.headers.to_string(),
@@ -80,7 +80,7 @@ impl HttpRequest {
             .lines()
             .for_each(|line| {
                 let (k, v) = line.split_once(':').unwrap_or(("", ""));
-                headers.insert(String::from(k), String::from(v));
+                headers.insert(k.to_lowercase(), v.to_string());
             });
 
         let (path, parameters): (String, Option<Vec<(String, String)>>) = {
@@ -133,6 +133,7 @@ impl HttpRequest {
         self.body = match serde_json::from_str::<Value>(&trim_body) {
             Ok(value) => Some(value),
             Err(e) => {
+                #[cfg(debug_assertions)]
                 let _ = fs::write("failed_parse.txt", trim_body);
                 return Err(format!("Failed to parse request body to json value: {e}"));
             }

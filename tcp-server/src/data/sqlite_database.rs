@@ -4,11 +4,13 @@ use rusqlite::{params, Connection};
 use super::Database;
 type Result<T> = crate::Result<T>;
 
+#[allow(unused)]
 pub struct SqliteDatabase {
     url: String,
     connection: Connection,
 }
 
+#[allow(unused)]
 impl SqliteDatabase {
     pub fn new(url: &str) -> Result<SqliteDatabase> {
         let connection = Connection::open(url).map_err(|e| e.to_string())?;
@@ -103,7 +105,8 @@ impl Database for SqliteDatabase {
 
     // Updates a user's information (note: username is the primary key and cannot be changed)
     fn update_user(&self, username: &str, updated_user: &User) -> Result<User> {
-        let rows_updated = self.connection
+        let rows_updated = self
+            .connection
             .execute(
                 "UPDATE User SET password_hash = ?1 WHERE username = ?2",
                 params![updated_user.get_password_hash(), username],
@@ -118,11 +121,9 @@ impl Database for SqliteDatabase {
     }
 
     fn delete_user(&self, username: &str) -> Result<()> {
-        let rows_updated = self.connection
-            .execute(
-                "DELETE FROM User WHERE username = ?1",
-                params![username],
-            )
+        let rows_updated = self
+            .connection
+            .execute("DELETE FROM User WHERE username = ?1", params![username])
             .map_err(|e| e.to_string())?;
 
         if rows_updated == 0 {
@@ -182,7 +183,8 @@ impl Database for SqliteDatabase {
     }
 
     fn update_sensor(&self, sensor_id: &str, updated_sensor: &Sensor) -> Result<Sensor> {
-        let rows_updated = self.connection
+        let rows_updated = self
+            .connection
             .execute(
                 "UPDATE Sensor SET type = ?1 WHERE sensorID = ?2",
                 params![updated_sensor.get_sensor_type(), sensor_id],
@@ -197,11 +199,9 @@ impl Database for SqliteDatabase {
     }
 
     fn delete_sensor(&self, sensor_id: &str) -> Result<()> {
-        let rows_updated = self.connection
-            .execute(
-                "DELETE FROM Sensor WHERE sensorID = ?1",
-                params![sensor_id],
-            )
+        let rows_updated = self
+            .connection
+            .execute("DELETE FROM Sensor WHERE sensorID = ?1", params![sensor_id])
             .map_err(|e| e.to_string())?;
 
         if rows_updated == 0 {
@@ -304,7 +304,8 @@ impl Database for SqliteDatabase {
     }
 
     fn update_session(&self, session_id: &str, updated_session: &Session) -> Result<Session> {
-        let rows_updated = self.connection
+        let rows_updated = self
+            .connection
             .execute(
                 "UPDATE Session SET username = ?1 WHERE sessionID = ?2",
                 params![updated_session.get_username(), session_id],
@@ -319,7 +320,8 @@ impl Database for SqliteDatabase {
     }
 
     fn delete_session(&self, session_id: &str) -> Result<()> {
-        let rows_updated = self.connection
+        let rows_updated = self
+            .connection
             .execute(
                 "DELETE FROM Session WHERE sessionID = ?1",
                 params![session_id],

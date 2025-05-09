@@ -26,10 +26,27 @@ impl HttpStatus {
     }
 }
 
+#[allow(unused)]
 pub enum HttpHeaderType {
     SessionID,
     Cookie,
+    SetCookie,
+    DateTime,
+    ContentType,
     ContentLength,
+    // CORS Access Control (Ac) headers
+    // Server
+    AcAllowOrigin,
+    AcAllowMethods,
+    AcAllowHeaders,
+    AcAllowCredentials,
+    AcMaxAge,
+    AcExposeHeaders,
+    // Client
+    Host,
+    Origin,
+    AcRequestMethod,
+    AcRequestHeaders,
 }
 
 impl HttpHeaderType {
@@ -37,7 +54,20 @@ impl HttpHeaderType {
         match self {
             HttpHeaderType::SessionID => "session_id",
             HttpHeaderType::Cookie => "cookie",
+            HttpHeaderType::SetCookie => "set-cookie",
+            HttpHeaderType::DateTime => "datetime",
+            HttpHeaderType::ContentType => "content-type",
             HttpHeaderType::ContentLength => "content-length",
+            HttpHeaderType::AcAllowOrigin => "access-control-allow-origin",
+            HttpHeaderType::AcAllowMethods => "access-control-allow-methods",
+            HttpHeaderType::AcAllowHeaders => "access-control-allow-headers",
+            HttpHeaderType::AcAllowCredentials => "access-control-allow-credentials",
+            HttpHeaderType::AcMaxAge => "access-control-max-age",
+            HttpHeaderType::AcExposeHeaders => "access-control-expose-headers",
+            HttpHeaderType::Host => "host",
+            HttpHeaderType::Origin => "origin",
+            HttpHeaderType::AcRequestMethod => "access-control-request-method",
+            HttpHeaderType::AcRequestHeaders => "access-control-request-headers",
         }
     }
 }
@@ -47,47 +77,91 @@ pub struct HttpHeader {
 }
 
 impl HttpHeader {
+    pub const AC_ALLOWED_METHODS: &'static str = "GET, POST, PATCH, DELETE, OPTIONS";
+    pub const AC_MAX_AGE: &'static str = "86400"; // Cache for 24 hours
+    pub const AC_ORIGIN: &'static str = "http://localhost:8080";
+
     pub fn new() -> Self {
         HttpHeader {
             headers: HashMap::new(),
         }
     }
 
-    #[allow(unused)]
-    pub fn with(mut head: Self, other: Vec<(String, String)>) -> Self {
+    pub fn build(self) -> Self {
+        self
+    }
+
+    pub fn with(&mut self, other: Vec<(&str, &str)>) -> &mut Self {
         other.iter().for_each(|(key, value)| {
-            head.insert(key.clone(), value.clone());
+            self.insert(key.to_string(), value.to_string());
         });
-        head
+        self
     }
 
     pub fn set_session(mut self, session_id: String) -> Self {
         self.insert(
-            String::from("Set-Cookie"),
+            HttpHeaderType::SetCookie.as_str().to_string(),
             format!(
-                "{}={}; HttpOnly; SameSite=Strict; Max-Age=3600; Path=/", //; Domain=<host>
+                "{}={}; HttpOnly; SameSite=Strict; Max-Age=3600; Path=/", //; Domain=<host> //TODO: add domain
                 HttpHeaderType::SessionID.as_str(),
                 session_id
             ),
         );
+        self.insert(
+            HttpHeaderType::AcExposeHeaders.as_str().to_string(),
+            HttpHeaderType::SessionID.as_str().to_string(),
+        );
         self
     }
 
-    pub fn default(content_type: String) -> Self {
-        let mut header = HttpHeader::new();
-
-        header.insert(String::from("Content-Type"), content_type);
-        header.insert(String::from("Datetime"), Utc::now().timestamp().to_string()); //TODO: this isn't working correctly
-
-        header
+    pub fn default(&mut self) -> &mut Self {
+        self.with(vec![
+            (HttpHeaderType::AcAllowOrigin.as_str(), Self::AC_ORIGIN),
+            (HttpHeaderType::AcAllowCredentials.as_str(), "true"),
+            (
+                HttpHeaderType::DateTime.as_str(),
+                //TODO: this isn't formatted correctly
+                &Utc::now().timestamp().to_string(),
+            ),
+        ])
     }
 
     pub fn default_json() -> Self {
-        HttpHeader::default(String::from("application/json"))
+        let mut header = HttpHeader::new();
+        header.default().with(vec![(
+            HttpHeaderType::ContentType.as_str(),
+            "application/json",
+        )]);
+        header.build()
     }
 
     pub fn default_html() -> Self {
-        HttpHeader::default(String::from("application/html"))
+        let mut header = HttpHeader::new();
+        header.default().with(vec![(
+            HttpHeaderType::ContentType.as_str(),
+            "application/html",
+        )]);
+        header.build()
+    }
+
+    pub fn default_options() -> Self {
+        let mut header = HttpHeader::new();
+        header.default().with(vec![
+            (
+                HttpHeaderType::AcAllowMethods.as_str(),
+                Self::AC_ALLOWED_METHODS,
+            ),
+            (
+                HttpHeaderType::AcAllowHeaders.as_str(),
+                &format!(
+                    "{}, {}",
+                    HttpHeaderType::ContentType.as_str(),
+                    HttpHeaderType::SessionID.as_str()
+                ),
+            ),
+            (HttpHeaderType::AcMaxAge.as_str(), Self::AC_MAX_AGE),
+        ]);
+        header.build()
     }
 
     pub fn to_string(&self) -> String {

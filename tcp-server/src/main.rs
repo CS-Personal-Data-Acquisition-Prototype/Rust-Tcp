@@ -126,13 +126,12 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
 
     // read request to buffer until HTTP header delimiter is read
     println!("Starting to read from stream");
-    let request_option: Option<HttpRequest> = loop {
+    let request_option: Result<HttpRequest> = loop {
         match stream.read(&mut buffer[total_bytes..]) {
             Ok(0) => {
                 tries -= 1;
                 if tries <= 0 {
-                    println!("Connection closed");
-                    break None;
+                    break Err(format!("Connection closed after {tries} attempts."));
                 }
                 std::thread::sleep(std::time::Duration::from_millis(500));
             }
@@ -147,56 +146,86 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                     .map(|pos| pos + HTTP_HEADER_DELIMITER.len())
                 {
                     //construct a request struct before reading the body
-                    let mut parsed_request = HttpRequest::from_request_bytes(&buffer[..delim_index]);
+                    let mut parsed_request =
+                        HttpRequest::from_request_bytes(&buffer[..delim_index]);
 
-                    let body_size = match parsed_request.headers.get(HttpHeaderType::ContentLength.as_str()) {
+                    //TODO: validate origin
+                    /*match parsed_request.headers.get(HttpHeaderType::Origin.as_str()) {
+                        Some(origin) if origin == HttpHeader::AC_ORIGIN => {}
+                        Some(invalid_origin) => break Err(format!(
+                                "Request origin invalid: expected '{}', recieved '{invalid_origin}'",
+                                HttpHeader::AC_ORIGIN
+                            )),
+                        None => break Err(format!(
+                            "Request origin invalid: expected '{}', recieved None",
+                            HttpHeader::AC_ORIGIN
+                        )),
+                    }*/
+
+                    let body_size = match parsed_request
+                        .headers
+                        .get(HttpHeaderType::ContentLength.as_str())
+                    {
                         Some(length) => {
-                            println!("LENGTH: {length}");
                             match length.trim().parse::<usize>() {
                                 Ok(num) => num,
-                                Err(e) => {
-                                    eprintln!("Failed to parse {} header to usize: {e}", HttpHeaderType::ContentLength.as_str());
-                                    break None;
-                                },
+                                Err(e) => break Err(format!(
+                                    "Failed to parse '{}' header to usize: {e}",
+                                    HttpHeaderType::ContentLength.as_str()
+                                ))
                             }
-                        },
+                        }
                         None => {
-                            eprintln!("No {} header found", HttpHeaderType::ContentLength.as_str());
-                            break None;
-                        },
+                            println!(
+                                "No '{}' header found",
+                                HttpHeaderType::ContentLength.as_str()
+                            );
+                            0
+                        }
                     };
 
-                    let body_recieved = total_bytes - delim_index;
+                    if body_size > 0 {
+                        let body_recieved = total_bytes - delim_index;
+                        let request_len = total_bytes - body_recieved + body_size;
 
-                    // read rest of body not recieved [total_bytes, body_size - body_recieved]
-                    if let Err(e) =
-                        stream.read_exact(&mut buffer[total_bytes..(total_bytes + body_size - body_recieved)])//TODO: may be off based on delimiter location and length
-                    {
-                        eprintln!(
-                            "Error encountered when reading {body_size} bytes from the stream: {e}"
-                        )
-                    }
-                    total_bytes += body_size - body_recieved;
+                        // expand buffer to fit rest of request
+                        buffer.resize(buffer.len().max(request_len), 0u8);
 
-                    // add body into request struct
-                    if let Err(e) = parsed_request.parse_body(&buffer[delim_index..(delim_index+body_size)]) {
-                        eprintln!("Failed to parse request body: {e}");
+                        // read rest of body not recieved [total_bytes, body_size - body_recieved]
+                        if let Err(e) = stream.read_exact(
+                            &mut buffer[total_bytes..request_len],
+                        ) {
+                            eprintln!(
+                                "Error encountered when reading '{body_size}' bytes from the stream: {e}"
+                            )
+                        }
+                        total_bytes += body_size - body_recieved;
+
+                        // add body into request struct
+                        if let Err(e) = parsed_request
+                            .parse_body(&buffer[delim_index..(delim_index + body_size)])
+                        {
+                            eprintln!("Failed to parse request body: {e}");
+                        }
                     }
+
+                    #[cfg(debug_assertions)]
                     let _ = fs::write("last_request.txt", parsed_request.to_string());
-
-                    break Some(parsed_request);
+                    break Ok(parsed_request);
                 }
             }
             Err(e) => eprintln!("Failed to read from the stream: {e}"),
         }
     };
-    println!("{total_bytes} total bytes read");
+    println!("{total_bytes} total bytes read\n");
 
     let response = match request_option {
-        None => HttpResponse::bad_request("Failed to parse request on the server."),
-        Some(request) => {
+        Err(e) => HttpResponse::bad_request(&format!("Failed to parse request on the server: {e}")),
+        Ok(request) => {
             //construct response from possible pathways
-            let gen_view = |filename: &str| generate_html_response(String::from("src/views/") + filename);
+            let gen_view =
+                |filename: &str| generate_html_response(String::from("src/views/") + filename);
+
             match request.path.clone() {
                 HttpPath::Index(_subpath) => gen_view("index.html"),
                 HttpPath::NotFound(path) => HttpResponse::json_404(&path),
@@ -277,6 +306,7 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                     HttpMethod::Post => User::insert_model(database, request.body),
                     HttpMethod::Patch => User::update_model(database, &subpath, request.body),
                     HttpMethod::Delete => User::delete_model(database, &subpath),
+                    HttpMethod::Options => HttpResponse::options_response(),
                     HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
                 },
                 HttpPath::Sensor(subpath) => {
@@ -311,6 +341,7 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                         HttpMethod::Post => Sensor::insert_model(database, request.body),
                         HttpMethod::Patch => Sensor::update_model(database, &subpath, request.body),
                         HttpMethod::Delete => Sensor::delete_model(database, &subpath),
+                        HttpMethod::Options => HttpResponse::options_response(),
                         HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
                     }
                 }
@@ -365,6 +396,7 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                         HttpMethod::Post => Session::insert_model(database, request.body),
                         HttpMethod::Patch => Session::update_model(database, &subpath, request.body),
                         HttpMethod::Delete => Session::delete_model(database, &subpath),
+                        HttpMethod::Options => HttpResponse::options_response(),
                         HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
                     }
                 }
@@ -423,6 +455,7 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                     HttpMethod::Post => SessionSensor::insert_model(database, request.body),
                     HttpMethod::Patch => SessionSensor::update_model(database, &subpath, request.body),
                     HttpMethod::Delete => SessionSensor::delete_model(database, &subpath),
+                    HttpMethod::Options => HttpResponse::options_response(),
                     HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
                 },
                 HttpPath::SessionSensorData(subpath) => match request.method {
@@ -490,12 +523,13 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                     },
                     HttpMethod::Patch => SessionSensorData::update_model(database, &subpath, request.body),
                     HttpMethod::Delete => SessionSensorData::delete_model(database, &subpath),
+                    HttpMethod::Options => HttpResponse::options_response(),
                     HttpMethod::Error => HttpResponse::json_404(&request.path.to_string()),
                 },
             }
-        },
+        }
     };
-    
+
     //send generated response //TODO: add stream identifier for error message
     if let Err(error) = response.send(stream) {
         eprintln!("Failed to send response to stream. Error: {error}")

@@ -2,7 +2,7 @@ use std::{io::Write, net::TcpStream};
 
 use serde_json::json;
 
-use super::{HttpHeader, HttpStatus};
+use super::{HttpHeader, HttpHeaderType, HttpStatus};
 
 pub struct HttpResponse {
     pub status: HttpStatus,
@@ -11,22 +11,6 @@ pub struct HttpResponse {
 }
 
 impl HttpResponse {
-    pub fn html_404() -> HttpResponse {
-        HttpResponse {
-            status: HttpStatus::NotFound,
-            headers: HttpHeader::default_html(),
-            body: String::from("<html><body><h1>404 Not Found</h1></body></html>"),
-        }
-    }
-
-    pub fn json_404(resource: &str) -> HttpResponse {
-        HttpResponse {
-            status: HttpStatus::NotFound,
-            headers: HttpHeader::default_json(),
-            body: json!({"error": format!("{resource} not found")}).to_string(),
-        }
-    }
-
     pub fn new(status: HttpStatus, header: HttpHeader, body: String) -> HttpResponse {
         HttpResponse {
             status,
@@ -41,8 +25,9 @@ impl HttpResponse {
 
     pub fn to_string(&self) -> String {
         format!(
-            "HTTP/1.1 {}\r\nContent-Length: {}\r\n{}\r\n\r\n{}",
+            "HTTP/1.1 {}\r\n{}: {}\r\n{}\r\n\r\n{}",
             self.status.as_str(),
+            HttpHeaderType::ContentLength.as_str(),
             self.body.len(),
             self.headers.to_string(),
             self.body,
@@ -58,6 +43,31 @@ impl HttpResponse {
         stream.write_all(data).map_err(|e| format!("Failed to send data (attempted {} bytes): {e}", data.len()))?;
         stream.flush().map_err(|e| format!("Failed to flush after sending data: {e}"))?;
         Ok(())
+    }
+
+    
+    pub fn html_404() -> HttpResponse {
+        HttpResponse::new(
+            HttpStatus::NotFound,
+            HttpHeader::default_html(),
+            String::from("<html><body><h1>404 Not Found</h1></body></html>"),
+        )
+    }
+
+    pub fn json_404(resource: &str) -> HttpResponse {
+        HttpResponse::new(
+            HttpStatus::NotFound,
+            HttpHeader::default_json(),
+            json!({"error": format!("{resource} not found")}).to_string(),
+        )
+    }
+
+    pub fn options_response() -> HttpResponse {
+        HttpResponse::new(
+            HttpStatus::NoContent,
+            HttpHeader::default_options(),
+            String::new()
+        )
     }
 
     pub fn bad_request(error_msg: &str) -> HttpResponse {

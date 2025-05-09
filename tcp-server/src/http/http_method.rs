@@ -4,34 +4,37 @@ pub enum HttpMethod {
     Post,
     Patch,
     Delete,
+    Options,
     Error,
 }
 
 impl HttpMethod {
     //const of all possible types to all iteration over all possible values
-    pub const ALL_TYPES: [HttpMethod; 5] = [
+    pub const ALL_TYPES: [HttpMethod; 6] = [
         Self::Get,
         Self::Post,
         Self::Patch,
         Self::Delete,
+        Self::Options,
         Self::Error,
     ];
 
     //Returns the String representitive
-    pub fn to_string(&self) -> String {
+    pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Get => String::from("GET"),
-            Self::Post => String::from("POST"),
-            Self::Patch => String::from("PATCH"),
-            Self::Delete => String::from("DELETE"),
-            Self::Error => String::from("ERROR"),
+            Self::Get => "GET",
+            Self::Post => "POST",
+            Self::Patch => "PATCH",
+            Self::Delete => "DELETE",
+            Self::Options => "OPTIONS",
+            Self::Error => "ERROR",
         }
     }
 
     #[allow(unused)]
     pub fn from_string(string: String) -> Self {
         for method in Self::ALL_TYPES {
-            if string.starts_with(&method.to_string()) {
+            if string.starts_with(method.as_str()) {
                 return method;
             }
         }
@@ -39,7 +42,7 @@ impl HttpMethod {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        self.to_string().into_bytes()
+        self.as_str().to_string().into_bytes()
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Self {
