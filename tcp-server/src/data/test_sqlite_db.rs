@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use rusqlite::{Connection, Result as RusqliteResult, params};
-    use crate::models::{BaseModel, Sensor, Session, SessionSensor, SessionSensorData, User};
+    use rusqlite::{Connection, params};
+    use crate::models::{Sensor, Session, SessionSensor, SessionSensorData, User};
     use crate::data::{Database, SqliteDatabase};
 
     /* Helpers */
@@ -99,7 +99,7 @@ mod tests {
         conn
             .execute(
                 "INSERT INTO Session_Sensor_Data (session_sensorID, datetime, data_blob) VALUES (?1, ?2, ?3)",
-                params![session_sensor_data.get_id(), session_sensor_data.get_datetime(), session_sensor_data.get_blob().to_string()]
+                params![session_sensor_data.get_id(), session_sensor_data.get_datetime(), session_sensor_data.get_blob()]
             ).expect("Failed to insert test session_sensor_data");
     }
 
@@ -744,7 +744,6 @@ mod tests {
         let fetched_session_sensor_data = fetch_session_sensor_data_result.unwrap();
         assert_models_eq!(session_sensor_data, fetched_session_sensor_data, [get_id, get_datetime, get_blob]);
     }
-    */
 
     #[test]
     fn test_batch_session_sensor_data() {
@@ -801,4 +800,5 @@ mod tests {
         let db = SqliteDatabase::from_connection(conn).expect("Failed to create test db");
         todo!()
     }
+    */
 }

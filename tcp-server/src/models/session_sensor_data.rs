@@ -12,13 +12,13 @@ use super::base_model::BaseModel;
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct SessionSensorData {
     #[serde(default)]
-    id: Option<usize>,
+    id: String,
     datetime: String,
-    data_blob: Value,
+    data_blob: Vec<u8>,
 }
 
 impl SessionSensorData {
-    pub fn new(id: Option<usize>, datetime: String, data_blob: Value) -> Self {
+    pub fn new(id: String, datetime: String, data_blob: Vec<u8>) -> Self {
         SessionSensorData {
             id,
             datetime,
@@ -27,10 +27,10 @@ impl SessionSensorData {
     }
 
     pub fn empty() -> Self {
-        Self::new(None, String::new(), Value::Null)
+        Self::new(String::new(), String::new(), Vec::new())
     }
 
-    pub fn get_id(&self) -> &Option<usize> {
+    pub fn get_id(&self) -> &str {
         &self.id
     }
 
@@ -38,7 +38,7 @@ impl SessionSensorData {
         &self.datetime
     }
 
-    pub fn get_blob(&self) -> &Value {
+    pub fn get_blob(&self) -> &Vec<u8> {
         &self.data_blob
     }
 
@@ -79,7 +79,7 @@ impl BaseModel for SessionSensorData {
         " Requires values \"datetime\": string and \"data_blob\": string";
 
     fn is_valid(&self) -> bool {
-        self.id.is_some() && !self.datetime.is_empty() && !self.data_blob.is_object()
+        !self.id.is_empty() && !self.datetime.is_empty() && !self.data_blob.is_empty()
     }
 
     fn public_json(&self) -> String {
@@ -92,13 +92,13 @@ impl BaseModel for SessionSensorData {
     }
 
     fn fill_from(&mut self, other: &Self) {
-        if self.id.is_none() {
-            self.id = other.get_id().clone()
+        if self.id.is_empty() {
+            self.id = other.get_id().to_string()
         }
         if self.datetime.is_empty() {
             self.datetime = other.get_datetime().to_string()
         }
-        if self.data_blob.is_null() {
+        if self.data_blob.is_empty() {
             self.data_blob = other.get_blob().clone()
         }
     }

@@ -443,7 +443,7 @@ impl Database for SqliteDatabase {
         self.connection
             .execute(
                 "INSERT INTO Session_Sensor_Data (session_sensorID, datetime, data_blob) VALUES (?1, ?2, ?3)",
-                params![session_sensor_data.get_id(), session_sensor_data.get_datetime(), session_sensor_data.get_blob().to_string()]
+                params![session_sensor_data.get_id(), session_sensor_data.get_datetime(), session_sensor_data.get_blob()]
             ).map_err(|e| e.to_string())?;
 
         Ok(session_sensor_data.clone())
@@ -462,7 +462,7 @@ impl Database for SqliteDatabase {
             self.connection
                 .execute(
                     "INSERT INTO Session_Sensor_Data (session_sensorID, datetime, data_blob) VALUES (?1, ?2, ?3)",
-                    params![data.get_id(), data.get_datetime(), data.get_blob().to_string()]
+                    params![data.get_id(), data.get_datetime(), data.get_blob()]
                 ).map_err(|e| e.to_string())?;
         }
 
