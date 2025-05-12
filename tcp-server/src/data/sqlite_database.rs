@@ -407,7 +407,6 @@ impl Database for SqliteDatabase {
         Ok(session_sensor)
     }
 
-    // TODO: Implement
     fn update_session_sensor(
         &self,
         session_sensor_id: &str,
@@ -429,9 +428,19 @@ impl Database for SqliteDatabase {
         Ok(updated_session_sensor.clone())
     }
 
-    // TODO: Implement
-    fn delete_session_sensor(&self, _session_sensor_id: &str) -> Result<()> {
-        todo!()
+    fn delete_session_sensor(&self, session_sensor_id: &str) -> Result<()> {
+        let rows_updated = self.connection
+            .execute(
+                "DELETE FROM Session_Sensor WHERE session_sensorID = ?1",
+                params![session_sensor_id],
+            )
+            .map_err(|e| e.to_string())?;
+
+        if rows_updated == 0 {
+            return Err("Failed to delete from Session_Sensor".into());
+        }
+
+        Ok(())
     }
 
     /* Session Sensor Data */
@@ -482,23 +491,14 @@ impl Database for SqliteDatabase {
 
         let session_sensor_data_itr = statement
             .query_map([], |row| {
-                let blob_data: Vec<u8> = row.get(2)?;
-                Ok(SessionSensorData::new(
-                    row.get(0)?,
-                    row.get(1)?,
-                    serde_json::from_slice(&blob_data).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(
-                            2,
-                            rusqlite::types::Type::Blob,
-                            Box::new(e),
-                        )
-                    })?,
-                ))
+                let id: String = row.get(0)?;
+                let datetime: String = row.get(1)?;
+                let data_blob: Vec<u8> = row.get(2)?;
+                Ok(SessionSensorData::new(id, datetime, data_blob))
             })
-            .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
         let mut session_sensor_data_vec = Vec::new();
-
         for session_sensor_data in session_sensor_data_itr {
             session_sensor_data_vec.push(session_sensor_data.map_err(|e| e.to_string())?);
         }
@@ -506,32 +506,25 @@ impl Database for SqliteDatabase {
         Ok(session_sensor_data_vec)
     }
 
+    // Returns a single sensor data row from Session_Sensor_Data
     fn get_sessions_sensor_data(&self, session_id: &str) -> Result<Vec<SessionSensorData>> {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT session_sensorID, datetime, data_blob FROM Session_Sensor_Data WHERE session_sensorID = ?1"
-            ).map_err(|e| e.to_string())?;
+                "SELECT session_sensorID, datetime, data_blob FROM Session_Sensor_Data WHERE session_sensorID = ?1",
+            )
+            .map_err(|e| e.to_string())?;
 
         let session_sensor_data_itr = statement
             .query_map(params![session_id], |row| {
-                let blob_data: Vec<u8> = row.get(2)?;
-                Ok(SessionSensorData::new(
-                    row.get(0)?,
-                    row.get(1)?,
-                    serde_json::from_slice(&blob_data).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(
-                            2,
-                            rusqlite::types::Type::Blob,
-                            Box::new(e),
-                        )
-                    })?,
-                ))
+                let id: String = row.get(0)?;
+                let datetime: String = row.get(1)?;
+                let data_blob: Vec<u8> = row.get(2)?;
+                Ok(SessionSensorData::new(id, datetime, data_blob))
             })
-            .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
         let mut session_sensor_data_vec = Vec::new();
-
         for session_sensor_data in session_sensor_data_itr {
             session_sensor_data_vec.push(session_sensor_data.map_err(|e| e.to_string())?);
         }
@@ -544,28 +537,20 @@ impl Database for SqliteDatabase {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT session_sensorID, datetime, data_blob FROM Session_Sensor_Data WHERE session_sensorID = ?1"
-            ).map_err(|e| e.to_string())?;
+                "SELECT session_sensorID, datetime, data_blob FROM Session_Sensor_Data WHERE session_sensorID = ?1",
+            )
+            .map_err(|e| e.to_string())?;
 
         let session_sensor_data_itr = statement
             .query_map(params![session_sensor_id], |row| {
-                let blob_data: Vec<u8> = row.get(2)?;
-                Ok(SessionSensorData::new(
-                    row.get(0)?,
-                    row.get(1)?,
-                    serde_json::from_slice(&blob_data).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(
-                            2,
-                            rusqlite::types::Type::Blob,
-                            Box::new(e),
-                        )
-                    })?,
-                ))
+                let id: String = row.get(0)?;
+                let datetime: String = row.get(1)?;
+                let data_blob: Vec<u8> = row.get(2)?;
+                Ok(SessionSensorData::new(id, datetime, data_blob))
             })
-            .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
         let mut session_sensor_data_vec = Vec::new();
-
         for session_sensor_data in session_sensor_data_itr {
             session_sensor_data_vec.push(session_sensor_data.map_err(|e| e.to_string())?);
         }
@@ -590,40 +575,53 @@ impl Database for SqliteDatabase {
 
         let session_sensor_datapoint = statement
             .query_row(params![session_sensor_id, datetime], |row| {
-                let blob_data: Vec<u8> = row.get(2)?;
-                Ok(SessionSensorData::new(
-                    row.get(0)?,
-                    row.get(1)?,
-                    serde_json::from_slice(&blob_data).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(
-                            2,
-                            rusqlite::types::Type::Blob,
-                            Box::new(e),
-                        )
-                    })?,
-                ))
+                let id: String = row.get(0)?;
+                let datetime: String = row.get(1)?;
+                let data_blob: Vec<u8> = row.get(2)?;
+
+                Ok(SessionSensorData::new(id, datetime, data_blob))
             })
-            .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
 
         Ok(session_sensor_datapoint)
     }
 
-    // TODO: Implement
     fn update_session_sensor_datapoint(
         &self,
-        _session_sensor_id: &str,
-        _datetime: &str,
-        _updated_session_sensor_datapoint: &SessionSensorData,
+        session_sensor_id: &str,
+        datetime: &str,
+        updated_session_sensor_datapoint: &SessionSensorData,
     ) -> Result<SessionSensorData> {
-        unimplemented!()
+        let rows_updated = self.connection
+            .execute(
+                "UPDATE Session_Sensor_Data SET data_blob = ?1 WHERE datetime = ?2 AND session_sensorID = ?3",
+                params![updated_session_sensor_datapoint.get_blob(), datetime, session_sensor_id],
+            )
+            .map_err(|e| e.to_string())?;
+
+        if rows_updated == 0 {
+            return Err("Failed to update Session_Sensor_Data".into());
+        }
+
+        Ok(updated_session_sensor_datapoint.clone())
     }
 
-    // TODO: Implement
     fn delete_session_sensor_datapoint(
         &self,
-        _session_sensor_id: &str,
-        _datetime: &str,
+        session_sensor_id: &str,
+        datetime: &str,
     ) -> Result<()> {
-        unimplemented!()
+        let rows_updated = self.connection
+            .execute(
+                "DELETE FROM Session_Sensor_Data WHERE session_sensorID = ?1 AND datetime = ?2",
+                params![session_sensor_id, datetime],
+            )
+            .map_err(|e| e.to_string())?;
+
+        if rows_updated == 0 {
+            return Err("Failed to delete from Session_Sensor_Data".into());
+        }
+
+        Ok(())
     }
 }

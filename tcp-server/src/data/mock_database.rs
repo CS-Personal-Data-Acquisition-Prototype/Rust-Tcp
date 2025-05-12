@@ -71,9 +71,6 @@ impl MockDatabase {
     }
 
     pub fn sessions_sensors_data() -> Vec<SessionSensorData> {
-        let mut map = serde_json::Map::new();
-        map.insert("data_blob".to_string(), serde_json::Value::Null);
-        let blob = serde_json::Value::Object(map);
         vec![
             SessionSensorData::new(String::from("1"), String::from("datetime_1"), b"test_1".to_vec()),
             SessionSensorData::new(String::from("2"), String::from("datetime_2"), b"test_2".to_vec()),
