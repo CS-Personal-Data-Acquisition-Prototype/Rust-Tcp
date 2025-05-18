@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::json;
 
 use crate::{
     data::Database,
@@ -26,6 +26,7 @@ impl SessionSensorData {
         }
     }
 
+    #[allow(unused)]
     pub fn empty() -> Self {
         Self::new(String::new(), String::new(), Vec::new())
     }

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{http::HttpPath, Database};
+use crate::{data::Database, http::HttpPath};
 
 type Result<T> = crate::Result<T>;
 
@@ -17,6 +17,7 @@ impl Sensor {
     pub fn new(id: String, sensor_type: String) -> Self {
         Sensor { id, sensor_type }
     }
+    #[allow(unused)]
     pub fn empty() -> Self {
         Self::new(String::new(), String::new())
     }

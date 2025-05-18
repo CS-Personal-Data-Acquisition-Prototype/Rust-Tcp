@@ -22,6 +22,7 @@ impl SessionSensor {
         }
     }
 
+    #[allow(unused)]
     pub fn empty() -> Self {
         Self::new(String::new(), String::new(), String::new())
     }

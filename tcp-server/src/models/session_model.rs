@@ -16,6 +16,7 @@ impl Session {
     pub fn new(id: String, username: String) -> Self {
         Session { id, username }
     }
+    #[allow(unused)]
     pub fn empty() -> Self {
         Self::new(String::new(), String::new())
     }

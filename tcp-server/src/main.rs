@@ -23,7 +23,7 @@ use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 use std::str;
 
-use data::{Database, MockDatabase};
+use data::Database;
 use http::http_header::HttpHeaderType;
 use http::{HttpHeader, HttpMethod, HttpPath, HttpRequest, HttpResponse, HttpStatus};
 use models::{BaseModel, Sensor, Session, SessionSensor, SessionSensorData, User};
@@ -35,10 +35,10 @@ type Result<T> = core::result::Result<T, String>;
 
 const HTTP_HEADER_DELIMITER: &[u8] = b"\r\n\r\n";
 
-#[allow(unused)]
 #[derive(Deserialize)]
 struct Config {
-    database_path: String,
+    #[cfg(feature = "sql")]
+    database_file: String,
     local_addr: String,
 }
 
@@ -85,14 +85,29 @@ fn main() {
         }
     };
 
-    let database = MockDatabase::new();
-    /*let database = match data::SqliteDatabase::new(&config.database_path) {
-        Ok(db) => db,
-        Err(error) => {
-            println!("Failed to establish database connection. Error: {error}");
-            return;
-        },
-    };*/
+    #[cfg(not(feature = "sql"))]
+    let database = data::MockDatabase::new();
+
+    #[cfg(feature = "sql")]
+    let database = {
+        match std::env::current_dir() {
+            Ok(mut path) => {
+                path.push("src");
+                path.push(&config.database_file);
+                match path.to_str() {
+                    Some(path_str) => match data::SqliteDatabase::new(path_str) {
+                        Ok(db) => db,
+                        Err(error) => {
+                            println!("Failed to establish database connection. Error: {error}");
+                            return;
+                        },
+                    },
+                    None => panic!("Failed to convert database path to a string."),
+                }
+            },
+            Err(e) => panic!("Failed to get current directory: {e}"),
+        }
+    };
 
     wait_for_connections(&database, listener);
 }
