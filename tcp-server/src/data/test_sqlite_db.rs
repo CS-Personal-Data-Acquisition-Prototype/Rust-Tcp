@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use rusqlite::{Connection, Result as RusqliteResult, params};
-    use crate::models::{BaseModel, Sensor, Session, SessionSensor, SessionSensorData, User};
+    use rusqlite::{Connection, params};
+    use crate::models::{Sensor, Session, SessionSensor, SessionSensorData, User};
     use crate::data::{Database, SqliteDatabase};
 
     /* Helpers */
@@ -99,7 +99,7 @@ mod tests {
         conn
             .execute(
                 "INSERT INTO Session_Sensor_Data (session_sensorID, datetime, data_blob) VALUES (?1, ?2, ?3)",
-                params![session_sensor_data.get_id(), session_sensor_data.get_datetime(), session_sensor_data.get_blob().to_string()]
+                params![session_sensor_data.get_id(), session_sensor_data.get_datetime(), session_sensor_data.get_blob()]
             ).expect("Failed to insert test session_sensor_data");
     }
 
@@ -711,7 +711,33 @@ mod tests {
         assert_models_eq!(updated_session_sensor, fetched_session_sensor, [get_id, get_session_id, get_sensor_id]);
     }
 
-    /*
+    #[test]
+    fn test_delete_session_sensor() {
+        let conn = init_schema();
+
+        let user = User::new("TestUser".to_string(), "pwordHashed".to_string());
+        add_test_user(&conn, &user);
+
+        let session = Session::new("session1".to_string(), "TestUser".to_string());
+        add_test_session(&conn, &session);
+
+        let sensor = Sensor::new("sensor1".to_string(), "Acceleration".to_string());
+        add_test_sensor(&conn, &sensor);
+
+        let session_sensor = SessionSensor::new("session_sensor1".to_string(), 
+            session.get_id().to_string(), sensor.get_id().to_string());
+        add_test_session_sensor(&conn, &session_sensor);
+
+        let db = SqliteDatabase::from_connection(conn).expect("Failed to create test db");
+
+        let result = db.delete_session_sensor(session_sensor.get_id());
+        assert!(result.is_ok());
+
+        // Verify that the user does not exist in the db
+        let fetch_session_sensor_result = db.get_session(session_sensor.get_id());
+        assert!(fetch_session_sensor_result.is_err());
+    }
+
     #[test]
     fn test_insert_session_sensor_data() {
         let conn = init_schema();
@@ -731,74 +757,355 @@ mod tests {
 
         let db = SqliteDatabase::from_connection(conn).expect("Failed to create test db");
 
-        let session_sensor_data = SessionSensorData::new(session_sensor.get_id().to_string(),
-            "01/01/2025U12:00:00".to_string(), "".into());
+        let session_sensor_data = SessionSensorData::new(
+            session_sensor.get_id().to_string(),
+            "01/01/2025U12:00:00".to_string(), 
+            "content".as_bytes().to_vec()
+        );
 
         let result = db.insert_session_sensor_data(&session_sensor_data);
         assert!(result.is_ok());
 
         // Check db for new session_sensor
-        let fetch_session_sensor_data_result = db.get_session_sensor_data(session_sensor_data.get_id());
-        assert!(fetch_session_sensor_data_result.is_ok());
+        let fetch_session_sensor_datapoint_result = db.get_session_sensor_datapoint(
+            session_sensor_data.get_id(), 
+            session_sensor_data.get_datetime()
+        );
+        assert!(fetch_session_sensor_datapoint_result.is_ok());
 
-        let fetched_session_sensor_data = fetch_session_sensor_data_result.unwrap();
+        let fetched_session_sensor_data = fetch_session_sensor_datapoint_result.unwrap();
         assert_models_eq!(session_sensor_data, fetched_session_sensor_data, [get_id, get_datetime, get_blob]);
     }
-    */
+
 
     #[test]
     fn test_batch_session_sensor_data() {
         let conn = init_schema();
 
+        let user = User::new("user1".to_string(), "hunter2".to_string());
+        add_test_user(&conn, &user);
+
+        let session = Session::new("session1".to_string(), user.get_username().to_string());
+        add_test_session(&conn, &session);
+
+        let sensor = Sensor::new("sensor1".to_string(), "Acceleration".to_string());
+        add_test_sensor(&conn, &sensor);
+
+        let session_sensor = SessionSensor::new(
+            "session_sensor1".to_string(),
+            session.get_id().to_string(),
+            sensor.get_id().to_string(),
+        );
+        add_test_session_sensor(&conn, &session_sensor);
+
         let db = SqliteDatabase::from_connection(conn).expect("Failed to create test db");
-        todo!()
+
+        let data_blobs = vec![
+            SessionSensorData::new(
+                session_sensor.get_id().to_string(),
+                "01/01/2025U12:00:00".to_string(),
+                "data1".as_bytes().to_vec(),
+            ),
+            SessionSensorData::new(
+                session_sensor.get_id().to_string(),
+                "01/01/2025U12:01:00".to_string(),
+                "data2".as_bytes().to_vec(),
+            ),
+            SessionSensorData::new(
+                session_sensor.get_id().to_string(),
+                "01/01/2025U12:02:00".to_string(),
+                "data3".as_bytes().to_vec(),
+            ),
+        ];
+
+        // Insert them using batch function
+        let result = db.batch_session_sensor_data(&data_blobs);
+        assert!(result.is_ok());
+
+        // Fetch and verify each inserted datapoint
+        for original in data_blobs.iter() {
+            let fetched = db
+                .get_session_sensor_datapoint(original.get_id(), original.get_datetime())
+                .expect("Failed to fetch inserted session sensor data");
+
+            assert_models_eq!(original, fetched, [get_id, get_datetime, get_blob]);
+        }
     }
 
     #[test]
     fn test_get_sessions_sensors_data() {
         let conn = init_schema();
 
+        let user = User::new("user1".to_string(), "hunter2".to_string());
+        add_test_user(&conn, &user);
+
+        let session = Session::new("session1".to_string(), user.get_username().to_string());
+        add_test_session(&conn, &session);
+
+        let sensor = Sensor::new("sensor1".to_string(), "Acceleration".to_string());
+        add_test_sensor(&conn, &sensor);
+
+        let session_sensor = SessionSensor::new(
+            "session_sensor1".to_string(),
+            session.get_id().to_string(),
+            sensor.get_id().to_string(),
+        );
+        add_test_session_sensor(&conn, &session_sensor);
+
         let db = SqliteDatabase::from_connection(conn).expect("Failed to create test db");
-        todo!()
+
+        let expected_data = vec![
+            SessionSensorData::new(
+                session_sensor.get_id().to_string(),
+                "01/01/2025U12:00:00".to_string(),
+                "data1".as_bytes().to_vec(),
+            ),
+            SessionSensorData::new(
+                session_sensor.get_id().to_string(),
+                "01/01/2025U12:01:00".to_string(),
+                "data2".as_bytes().to_vec(),
+            ),
+        ];
+
+        db.batch_session_sensor_data(&expected_data).expect("Batch insert failed");
+
+        let fetched_result = db.get_sessions_sensors_data();
+        assert!(fetched_result.is_ok());
+
+        let mut fetched_data = fetched_result.unwrap();
+        let mut expected_data = expected_data;
+
+        // Sort by datetime for deterministic comparison
+        fetched_data.sort_by(|a, b| a.get_datetime().cmp(b.get_datetime()));
+        expected_data.sort_by(|a, b| a.get_datetime().cmp(b.get_datetime()));
+
+        assert_eq!(fetched_data.len(), expected_data.len());
+
+        for (expected, actual) in expected_data.iter().zip(fetched_data.iter()) {
+            assert_models_eq!(expected, actual, [get_id, get_datetime, get_blob]);
+        }
     }
 
     #[test]
     fn test_get_sessions_sensor_data() {
         let conn = init_schema();
 
+        let user = User::new("user1".to_string(), "hunter2".to_string());
+        add_test_user(&conn, &user);
+
+        let session = Session::new("session1".to_string(), user.get_username().to_string());
+        add_test_session(&conn, &session);
+
+        let sensor = Sensor::new("sensor1".to_string(), "Acceleration".to_string());
+        add_test_sensor(&conn, &sensor);
+
+        let session_sensor = SessionSensor::new(
+            "session_sensor1".to_string(),
+            session.get_id().to_string(),
+            sensor.get_id().to_string(),
+        );
+        add_test_session_sensor(&conn, &session_sensor);
+
         let db = SqliteDatabase::from_connection(conn).expect("Failed to create test db");
-        todo!()
+
+        let expected_data = vec![
+            SessionSensorData::new(
+                session_sensor.get_id().to_string(),
+                "01/01/2025U12:00:00".to_string(),
+                "dataA".as_bytes().to_vec(),
+            ),
+            SessionSensorData::new(
+                session_sensor.get_id().to_string(),
+                "01/01/2025U12:01:00".to_string(),
+                "dataB".as_bytes().to_vec(),
+            ),
+        ];
+
+        db.batch_session_sensor_data(&expected_data).expect("Method failed");
+
+        let fetched_result = db.get_sessions_sensor_data(session_sensor.get_id());
+        assert!(fetched_result.is_ok());
+
+        let fetched_data = fetched_result.unwrap();
+        assert_eq!(fetched_data.len(), expected_data.len());
+
+        for (expected, actual) in expected_data.iter().zip(fetched_data.iter()) {
+            assert_models_eq!(expected, actual, [get_id, get_datetime, get_blob]);
+        }
     }
 
     #[test]
     fn test_get_session_sensor_data() {
         let conn = init_schema();
 
+        let user = User::new("user1".to_string(), "hunter2".to_string());
+        add_test_user(&conn, &user);
+
+        let session = Session::new("session1".to_string(), user.get_username().to_string());
+        add_test_session(&conn, &session);
+
+        let sensor = Sensor::new("sensor1".to_string(), "Acceleration".to_string());
+        add_test_sensor(&conn, &sensor);
+
+        let session_sensor = SessionSensor::new(
+            "session_sensor1".to_string(),
+            session.get_id().to_string(),
+            sensor.get_id().to_string(),
+        );
+        add_test_session_sensor(&conn, &session_sensor);
+
+        let session_sensor_data = SessionSensorData::new(
+            session_sensor.get_id().to_string(),
+            "01/01/2025U12:00:00".to_string(),
+            "content".as_bytes().to_vec(),
+        );
+        add_test_session_sensor_data(&conn, &session_sensor_data);
+
         let db = SqliteDatabase::from_connection(conn).expect("Failed to create test db");
-        todo!()
+
+        db.insert_session_sensor_data(&session_sensor_data);
+
+        let fetched = db.get_session_sensor_datapoint(
+            session_sensor_data.get_id(),
+            session_sensor_data.get_datetime(),
+        ).expect("Method failed");
+
+        assert_models_eq!(session_sensor_data, fetched, [get_id, get_datetime, get_blob]);
     }
 
     #[test]
     fn test_get_session_sensor_datapoint() {
         let conn = init_schema();
 
+        let user = User::new("user1".to_string(), "hunter2".to_string());
+        add_test_user(&conn, &user);
+
+        let session = Session::new("session1".to_string(), user.get_username().to_string());
+        add_test_session(&conn, &session);
+
+        let sensor = Sensor::new("sensor1".to_string(), "Acceleration".to_string());
+        add_test_sensor(&conn, &sensor);
+
+        let session_sensor = SessionSensor::new(
+            "session_sensor1".to_string(),
+            session.get_id().to_string(),
+            sensor.get_id().to_string(),
+        );
+        add_test_session_sensor(&conn, &session_sensor);
+
+        let session_sensor_data = SessionSensorData::new(
+            session_sensor.get_id().to_string(),
+            "01/01/2025U12:00:00".to_string(),
+            "content".as_bytes().to_vec(),
+        );
+        add_test_session_sensor_data(&conn, &session_sensor_data);
+
         let db = SqliteDatabase::from_connection(conn).expect("Failed to create test db");
-        todo!()
+
+        let fetched = db
+            .get_session_sensor_datapoint(
+                session_sensor_data.get_id(),
+                session_sensor_data.get_datetime(),
+            )
+            .expect("Method failed");
+
+        assert_models_eq!(
+            session_sensor_data,
+            fetched,
+            [get_id, get_datetime, get_blob]
+        );
     }
 
     #[test]
     fn test_update_session_sensor_datapoint() {
         let conn = init_schema();
 
+        let user = User::new("user1".to_string(), "hunter2".to_string());
+        add_test_user(&conn, &user);
+
+        let session = Session::new("session1".to_string(), user.get_username().to_string());
+        add_test_session(&conn, &session);
+
+        let sensor = Sensor::new("sensor1".to_string(), "Acceleration".to_string());
+        add_test_sensor(&conn, &sensor);
+
+        let session_sensor = SessionSensor::new(
+            "session_sensor1".to_string(),
+            session.get_id().to_string(),
+            sensor.get_id().to_string(),
+        );
+        add_test_session_sensor(&conn, &session_sensor);
+
+        let session_sensor_data = SessionSensorData::new(
+            session_sensor.get_id().to_string(),
+            "01/01/2025U12:00:00".to_string(),
+            "content".as_bytes().to_vec(),
+        );
+        add_test_session_sensor_data(&conn, &session_sensor_data);
+
         let db = SqliteDatabase::from_connection(conn).expect("Failed to create test db");
-        todo!()
+
+        let updated = SessionSensorData::new(
+            session_sensor_data.get_id().to_string(),
+            session_sensor_data.get_datetime().to_string(),
+            "updated".as_bytes().to_vec(),
+        );
+
+        let result = db.update_session_sensor_datapoint(
+            updated.get_id(),
+            updated.get_datetime(),
+            &updated,
+        );
+        assert!(result.is_ok());
+
+        // Fetch and confirm the update was applied
+        let fetched = db
+            .get_session_sensor_datapoint(updated.get_id(), updated.get_datetime())
+            .expect("Fetch failed after update");
+
+        assert_models_eq!(updated, fetched, [get_id, get_datetime, get_blob]);
     }
 
     #[test]
     fn test_delete_session_sensor_datapoint() {
         let conn = init_schema();
 
+        let user = User::new("user1".to_string(), "hunter2".to_string());
+        add_test_user(&conn, &user);
+
+        let session = Session::new("session1".to_string(), user.get_username().to_string());
+        add_test_session(&conn, &session);
+
+        let sensor = Sensor::new("sensor1".to_string(), "Acceleration".to_string());
+        add_test_sensor(&conn, &sensor);
+
+        let session_sensor = SessionSensor::new(
+            "session_sensor1".to_string(),
+            session.get_id().to_string(),
+            sensor.get_id().to_string(),
+        );
+        add_test_session_sensor(&conn, &session_sensor);
+
+        let session_sensor_data = SessionSensorData::new(
+            session_sensor.get_id().to_string(),
+            "01/01/2025U12:00:00".to_string(),
+            "content".as_bytes().to_vec(),
+        );
+        add_test_session_sensor_data(&conn, &session_sensor_data);
+
         let db = SqliteDatabase::from_connection(conn).expect("Failed to create test db");
-        todo!()
+
+        let result = db.delete_session_sensor_datapoint(
+            session_sensor_data.get_id(),
+            session_sensor_data.get_datetime(),
+        );
+        assert!(result.is_ok());
+
+        // Verify that the datapoint does not exist in the db
+        let post_delete = db.get_session_sensor_datapoint(
+            session_sensor_data.get_id(), 
+            session_sensor_data.get_datetime()
+        );
+        assert!(post_delete.is_err());
     }
 }
