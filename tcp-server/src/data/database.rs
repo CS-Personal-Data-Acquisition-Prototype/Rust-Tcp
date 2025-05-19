@@ -4,6 +4,7 @@ type Result<T> = crate::Result<T>;
 
 //TODO: add query parameters
 pub trait Database {
+    fn temp_session_id_solution(&self);
     /* Authentication */
     fn get_session_user(&self, session_id: &str) -> Result<User>;
     fn is_admin(&self, user: &User) -> bool;

@@ -516,13 +516,19 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                         Some("session") => match HttpPath::subsection(&subpath, 1) {
                             Some(session_id) => match session_id.parse::<i64>() {
                                 Ok(session_id) => match database.get_sessions_sensor_data(session_id) {
-                                    Ok(sessions_sensor_data) => HttpResponse::from_vec(json!({ "datapoints": sessions_sensor_data.iter().map(|session_sensor_data| {
-                                        json!({
-                                            "id": session_sensor_data.get_id(),
-                                            "datetime": session_sensor_data.get_datetime(),
-                                            "data_blob": session_sensor_data.get_blob(),
-                                        })
-                                    }).collect::<Vec<_>>()}).to_string()),
+                                    Ok(sessions_sensor_data) => {
+                                        //TODO: Remove this later as it temporary supports the data flow while waiting for Pi_Transmit
+                                        if session_id == 1 {
+                                            database.temp_session_id_solution();
+                                        }
+                                        HttpResponse::from_vec(json!({ "datapoints": sessions_sensor_data.iter().map(|session_sensor_data| {
+                                            json!({
+                                                "id": session_sensor_data.get_id(),
+                                                "datetime": session_sensor_data.get_datetime(),
+                                                "data_blob": session_sensor_data.get_blob(),
+                                            })
+                                        }).collect::<Vec<_>>()}).to_string())
+                                    },
                                     Err(_) => HttpResponse::json_404(&request.path.to_string()),
                                 },
                                 Err(e) => HttpResponse::bad_request(&format!("Failed to parse id to i64: {e}")),

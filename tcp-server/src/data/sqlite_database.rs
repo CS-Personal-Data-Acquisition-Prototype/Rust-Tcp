@@ -77,6 +77,12 @@ impl SqliteDatabase {
 
 //TODO: impl Database for SqliteDatabase {}
 impl Database for SqliteDatabase {
+    fn temp_session_id_solution(&self) {
+        if let Err(e) = self.connection.execute_batch("UPDATE Session_Sensor_Data SET session_sensorID = 2 WHERE session_sensorID = 1") {
+            eprintln!("Failed to update all session_sensorID `1` to `2`: {e}")
+        }
+    }
+    
     /* Authentication */
     // TODO: Implement
     // No column for admin

@@ -66,6 +66,8 @@ impl MockDatabase {
 }
 
 impl Database for MockDatabase {
+    fn temp_session_id_solution(&self) {}
+    
     fn get_session_user(&self, session_id: &str) -> Result<User> {
         Ok(User::new(
             session_id.to_string(),
