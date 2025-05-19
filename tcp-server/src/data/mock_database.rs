@@ -67,7 +67,7 @@ impl MockDatabase {
 
 impl Database for MockDatabase {
     fn temp_session_id_solution(&self) {}
-    
+
     fn get_session_user(&self, session_id: &str) -> Result<User> {
         Ok(User::new(
             session_id.to_string(),
@@ -260,7 +260,11 @@ impl Database for MockDatabase {
         Ok(data_blobs
             .iter()
             .map(|blob| {
-                SessionSensorData::new(0, blob.get_datetime().to_string(), blob.get_blob().to_string())
+                SessionSensorData::new(
+                    0,
+                    blob.get_datetime().to_string(),
+                    blob.get_blob().to_string(),
+                )
             })
             .collect::<Vec<_>>())
     }
@@ -288,11 +292,11 @@ impl Database for MockDatabase {
 
     fn get_session_sensor_datapoint(
         &self,
-        session_sensor_id: i64,
+        session_id: i64,
         datetime: &str,
     ) -> Result<SessionSensorData> {
         Ok(SessionSensorData::new(
-            session_sensor_id,
+            session_id,
             datetime.to_string(),
             String::new(),
         ))
@@ -300,14 +304,14 @@ impl Database for MockDatabase {
 
     fn update_session_sensor_datapoint(
         &self,
-        session_sensor_id: i64,
+        session_id: i64,
         datetime: &str,
         updated_session_sensor_datapoint: &SessionSensorData,
     ) -> Result<SessionSensorData> {
         let mut session_sensor_datapoint = SessionSensorData::empty();
         session_sensor_datapoint.fill_from(updated_session_sensor_datapoint);
         session_sensor_datapoint.fill_from(&SessionSensorData::new(
-            session_sensor_id,
+            session_id,
             datetime.to_string(),
             String::new(),
         ));
@@ -316,7 +320,7 @@ impl Database for MockDatabase {
 
     fn delete_session_sensor_datapoint(
         &self,
-        _session_sensor_id: i64,
+        _session_id: i64,
         _datetime: &str,
     ) -> Result<()> {
         Ok(())

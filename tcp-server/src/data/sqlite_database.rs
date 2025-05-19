@@ -32,10 +32,10 @@ CREATE TABLE IF NOT EXISTS Session_Sensor (
 
 CREATE TABLE IF NOT EXISTS Session_Sensor_Data (
     datetime TEXT,
-    session_sensorID INTEGER,
+    sessionID INTEGER,
     data_blob TEXT NOT NULL,
-    PRIMARY KEY (datetime, session_sensorID),
-    FOREIGN KEY (session_sensorID) REFERENCES Session_Sensor(session_sensorID) ON DELETE CASCADE
+    PRIMARY KEY (datetime, sessionID),
+    FOREIGN KEY (sessionID) REFERENCES Session(sessionID) ON DELETE CASCADE
 );
 "#;
 
@@ -78,8 +78,8 @@ impl SqliteDatabase {
 //TODO: impl Database for SqliteDatabase {}
 impl Database for SqliteDatabase {
     fn temp_session_id_solution(&self) {
-        if let Err(e) = self.connection.execute_batch("UPDATE Session_Sensor_Data SET session_sensorID = 2 WHERE session_sensorID = 1") {
-            eprintln!("Failed to update all session_sensorID `1` to `2`: {e}")
+        if let Err(e) = self.connection.execute_batch("UPDATE Session_Sensor_Data SET sessionID = 2 WHERE sessionID = 1") {
+            eprintln!("Failed to update all sessionID `1` to `2`: {e}")
         }
     }
     
@@ -489,7 +489,7 @@ impl Database for SqliteDatabase {
     ) -> Result<SessionSensorData> {
         self.connection
             .execute(
-                "INSERT INTO Session_Sensor_Data (session_sensorID, datetime, data_blob) VALUES (?1, ?2, ?3)",
+                "INSERT INTO Session_Sensor_Data (sessionID, datetime, data_blob) VALUES (?1, ?2, ?3)",
                 params![session_sensor_data.get_id(), session_sensor_data.get_datetime(), session_sensor_data.get_blob()]
             ).map_err(|e| e.to_string())?;
 
@@ -508,7 +508,7 @@ impl Database for SqliteDatabase {
         for data in data_blobs {
             self.connection
                 .execute(
-                    "INSERT INTO Session_Sensor_Data (session_sensorID, datetime, data_blob) VALUES (?1, ?2, ?3)",
+                    "INSERT INTO Session_Sensor_Data (sessionID, datetime, data_blob) VALUES (?1, ?2, ?3)",
                     params![data.get_id(), data.get_datetime(), data.get_blob()]
                 ).map_err(|e| e.to_string())?;
         }
@@ -524,7 +524,7 @@ impl Database for SqliteDatabase {
     fn get_sessions_sensors_data(&self) -> Result<Vec<SessionSensorData>> {
         let mut statement = self
             .connection
-            .prepare("SELECT session_sensorID, datetime, data_blob FROM Session_Sensor_Data")
+            .prepare("SELECT sessionID, datetime, data_blob FROM Session_Sensor_Data")
             .map_err(|e| e.to_string())?;
 
         let session_sensor_data_itr = statement
@@ -549,7 +549,7 @@ impl Database for SqliteDatabase {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT session_sensorID, datetime, data_blob FROM Session_Sensor_Data WHERE session_sensorID IN (SELECT session_sensorID FROM Session_Sensor WHERE sessionID = ?1)",
+                "SELECT sessionID, datetime, data_blob FROM Session_Sensor_Data WHERE sessionID = ?1",
             )
             .map_err(|e| e.to_string())?;
 
@@ -575,7 +575,7 @@ impl Database for SqliteDatabase {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT session_sensorID, datetime, data_blob FROM Session_Sensor_Data WHERE session_sensorID = ?1",
+                "SELECT sessionID, datetime, data_blob FROM Session_Sensor_Data WHERE sessionID = (SELECT sessionID FROM Session_Sensor WHERE session_sensorID = ?1)",
             )
             .map_err(|e| e.to_string())?;
 
@@ -599,20 +599,20 @@ impl Database for SqliteDatabase {
     // Returns a single datapoint that matches a session_sensor_id and datetime
     fn get_session_sensor_datapoint(
         &self,
-        session_sensor_id: i64,
+        session_id: i64,
         datetime: &str,
     ) -> Result<SessionSensorData> {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT session_sensorID, datetime, data_blob FROM Session_Sensor_Data 
-             WHERE session_sensorID = ?1
+                "SELECT sessionID, datetime, data_blob FROM Session_Sensor_Data 
+             WHERE sessionID = ?1
              AND datetime = ?2",
             )
             .map_err(|e| e.to_string())?;
 
         let session_sensor_datapoint = statement
-            .query_row(params![session_sensor_id, datetime], |row| {
+            .query_row(params![session_id, datetime], |row| {
                 let id: i64 = row.get(0)?;
                 let datetime: String = row.get(1)?;
                 let data_blob: String = row.get(2)?;
@@ -626,14 +626,14 @@ impl Database for SqliteDatabase {
 
     fn update_session_sensor_datapoint(
         &self,
-        session_sensor_id: i64,
+        session_id: i64,
         datetime: &str,
         updated_session_sensor_datapoint: &SessionSensorData,
     ) -> Result<SessionSensorData> {
         let rows_updated = self.connection
             .execute(
-                "UPDATE Session_Sensor_Data SET data_blob = ?1 WHERE datetime = ?2 AND session_sensorID = ?3",
-                params![updated_session_sensor_datapoint.get_blob(), datetime, session_sensor_id],
+                "UPDATE Session_Sensor_Data SET sessionID = ?1, datetime = ?2, data_blob = ?3 WHERE datetime = ?4 AND sessionID = ?5",
+                params![updated_session_sensor_datapoint.get_id(), updated_session_sensor_datapoint.get_datetime(), updated_session_sensor_datapoint.get_blob(), datetime, session_id],
             )
             .map_err(|e| e.to_string())?;
 
@@ -646,14 +646,14 @@ impl Database for SqliteDatabase {
 
     fn delete_session_sensor_datapoint(
         &self,
-        session_sensor_id: i64,
+        session_id: i64,
         datetime: &str,
     ) -> Result<()> {
         let rows_updated = self
             .connection
             .execute(
-                "DELETE FROM Session_Sensor_Data WHERE session_sensorID = ?1 AND datetime = ?2",
-                params![session_sensor_id, datetime],
+                "DELETE FROM Session_Sensor_Data WHERE sessionID = ?1 AND datetime = ?2",
+                params![session_id, datetime],
             )
             .map_err(|e| e.to_string())?;
 
