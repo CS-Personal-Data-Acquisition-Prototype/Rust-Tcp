@@ -1,4 +1,4 @@
-#![allow(unused)]
+#![cfg(feature = "sql")]
 #[cfg(test)]
 mod tests {
     use rusqlite::{Connection, params};

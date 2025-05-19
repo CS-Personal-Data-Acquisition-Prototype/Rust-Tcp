@@ -96,7 +96,10 @@ fn main() {
                 path.push(&config.database_file);
                 match path.to_str() {
                     Some(path_str) => match data::SqliteDatabase::new(path_str) {
-                        Ok(db) => db,
+                        Ok(db) => {
+                            db.init();
+                            db
+                        },
                         Err(error) => {
                             println!("Failed to establish database connection. Error: {error}");
                             return;

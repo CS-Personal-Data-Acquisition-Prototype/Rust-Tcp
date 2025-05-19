@@ -4,10 +4,46 @@ use rusqlite::{params, Connection};
 use super::Database;
 type Result<T> = crate::Result<T>;
 
+const SCHEMA_STATEMENT: &str = r#"
+CREATE TABLE IF NOT EXISTS User (
+    username TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS Session (
+    sessionID TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    FOREIGN KEY (username) REFERENCES User(username) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS Sensor (
+    sensorID TEXT PRIMARY KEY,
+    type TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS Session_Sensor (
+    session_sensorID TEXT PRIMARY KEY,
+    sessionID TEXT NOT NULL,
+    sensorID TEXT NOT NULL,
+    FOREIGN KEY (sessionID) REFERENCES Session(sessionID) ON DELETE CASCADE,
+    FOREIGN KEY (sensorID) REFERENCES Sensor(sensorID) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS Session_Sensor_Data (
+    datetime TEXT,
+    session_sensorID TEXT,
+    data_blob TEXT NOT NULL,
+    PRIMARY KEY (datetime, session_sensorID),
+    FOREIGN KEY (session_sensorID) REFERENCES Session_Sensor(session_sensorID) ON DELETE CASCADE
+);
+"#;
+
 #[allow(unused)]
 pub struct SqliteDatabase {
     url: String,
     connection: Connection,
+    // Temp Mock database to replace the unimplemented functions for testing
+    mock_db: super::MockDatabase,
 }
 
 #[allow(unused)]
@@ -17,6 +53,7 @@ impl SqliteDatabase {
         Ok(SqliteDatabase {
             url: url.to_string(),
             connection,
+            mock_db: super::MockDatabase::new(),
         })
     }
 
@@ -25,7 +62,15 @@ impl SqliteDatabase {
         Ok(SqliteDatabase {
             url: ":memory:".to_string(),
             connection,
+            mock_db: super::MockDatabase::new(),
         })
+    }
+
+    // Function to initialize the database schema
+    pub fn init(&self) {
+        if let Err(e) = self.connection.execute_batch(SCHEMA_STATEMENT) {
+            panic!("Failed to create database schema: {e}")
+        }
     }
 }
 
@@ -34,23 +79,28 @@ impl Database for SqliteDatabase {
     /* Authentication */
     // TODO: Implement
     // No column for admin
-    fn is_admin(&self, _user: &User) -> bool {
-        todo!()
+    fn is_admin(&self, user: &User) -> bool {
+        self.mock_db.is_admin(user)
     }
 
     // TODO: Implement
-    fn login(&self, _user: &User) -> Result<String> {
-        todo!()
+    fn login(&self, user: &User) -> Result<String> {
+        self.mock_db.login(user)
     }
 
     // TODO: Implement
-    fn logout(&self, _session_id: &str) -> Result<()> {
-        todo!()
+    fn logout(&self, session_id: &str) -> Result<()> {
+        self.mock_db.logout(session_id)
     }
 
     // TODO: Implement
-    fn renew_session(&self, _old_session: &str) -> Result<String> {
-        todo!()
+    fn renew_session(&self, old_session: &str) -> Result<String> {
+        self.mock_db.renew_session(old_session)
+    }
+
+    //TODO: Implement
+    fn get_session_user(&self, session_id: &str) -> Result<User> {
+        self.mock_db.get_session_user(session_id)
     }
 
     /* User */
@@ -240,27 +290,6 @@ impl Database for SqliteDatabase {
         Ok(session)
     }
 
-    // Returns a row from User where sessionID matches
-    fn get_session_user(&self, session_id: &str) -> Result<User> {
-        let mut statement = self
-            .connection
-            .prepare(
-                "SELECT User.username, User.password_hash
-             FROM Session
-             JOIN User ON Session.username = User.username
-             WHERE Session.sessionID = ?1",
-            )
-            .map_err(|e| e.to_string())?;
-
-        let user = statement
-            .query_row(params![session_id], |row| {
-                Ok(User::new(row.get(0)?, row.get(1)?))
-            })
-            .map_err(|e| e.to_string())?;
-
-        Ok(user)
-    }
-
     // Returns rows from Session where username matches
     fn get_user_sessions(&self, username: &str) -> Result<Vec<Session>> {
         let mut statement = self
@@ -431,7 +460,8 @@ impl Database for SqliteDatabase {
     }
 
     fn delete_session_sensor(&self, session_sensor_id: &str) -> Result<()> {
-        let rows_updated = self.connection
+        let rows_updated = self
+            .connection
             .execute(
                 "DELETE FROM Session_Sensor WHERE session_sensorID = ?1",
                 params![session_sensor_id],
@@ -498,7 +528,7 @@ impl Database for SqliteDatabase {
                 let data_blob: Vec<u8> = row.get(2)?;
                 Ok(SessionSensorData::new(id, datetime, data_blob))
             })
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
         let mut session_sensor_data_vec = Vec::new();
         for session_sensor_data in session_sensor_data_itr {
@@ -524,7 +554,7 @@ impl Database for SqliteDatabase {
                 let data_blob: Vec<u8> = row.get(2)?;
                 Ok(SessionSensorData::new(id, datetime, data_blob))
             })
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
         let mut session_sensor_data_vec = Vec::new();
         for session_sensor_data in session_sensor_data_itr {
@@ -550,7 +580,7 @@ impl Database for SqliteDatabase {
                 let data_blob: Vec<u8> = row.get(2)?;
                 Ok(SessionSensorData::new(id, datetime, data_blob))
             })
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
         let mut session_sensor_data_vec = Vec::new();
         for session_sensor_data in session_sensor_data_itr {
@@ -583,7 +613,7 @@ impl Database for SqliteDatabase {
 
                 Ok(SessionSensorData::new(id, datetime, data_blob))
             })
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
         Ok(session_sensor_datapoint)
     }
@@ -613,7 +643,8 @@ impl Database for SqliteDatabase {
         session_sensor_id: &str,
         datetime: &str,
     ) -> Result<()> {
-        let rows_updated = self.connection
+        let rows_updated = self
+            .connection
             .execute(
                 "DELETE FROM Session_Sensor_Data WHERE session_sensorID = ?1 AND datetime = ?2",
                 params![session_sensor_id, datetime],

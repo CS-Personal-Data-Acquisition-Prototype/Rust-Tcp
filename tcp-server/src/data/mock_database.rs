@@ -1,4 +1,4 @@
-#![cfg(not(feature = "sql"))]
+//#![cfg(not(feature = "sql"))]
 use crate::models::{BaseModel, Sensor, Session, SessionSensor, SessionSensorData, User};
 
 use super::Database;
