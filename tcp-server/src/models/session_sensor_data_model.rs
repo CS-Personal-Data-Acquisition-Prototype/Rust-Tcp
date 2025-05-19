@@ -12,13 +12,13 @@ use super::base_model::BaseModel;
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct SessionSensorData {
     #[serde(default)]
-    id: String,
+    id: i64,
     datetime: String,
-    data_blob: Vec<u8>,
+    data_blob: String,
 }
 
 impl SessionSensorData {
-    pub fn new(id: String, datetime: String, data_blob: Vec<u8>) -> Self {
+    pub fn new(id: i64, datetime: String, data_blob: String) -> Self {
         SessionSensorData {
             id,
             datetime,
@@ -28,10 +28,10 @@ impl SessionSensorData {
 
     #[allow(unused)]
     pub fn empty() -> Self {
-        Self::new(String::new(), String::new(), Vec::new())
+        Self::new(-1, String::new(), String::new())
     }
 
-    pub fn get_id(&self) -> &str {
+    pub fn get_id(&self) -> &i64 {
         &self.id
     }
 
@@ -39,7 +39,7 @@ impl SessionSensorData {
         &self.datetime
     }
 
-    pub fn get_blob(&self) -> &Vec<u8> {
+    pub fn get_blob(&self) -> &str {
         &self.data_blob
     }
 
@@ -80,7 +80,7 @@ impl BaseModel for SessionSensorData {
         " Requires values \"datetime\": string and \"data_blob\": string";
 
     fn is_valid(&self) -> bool {
-        !self.id.is_empty() && !self.datetime.is_empty() && !self.data_blob.is_empty()
+        self.id >= 0 && !self.datetime.is_empty() && !self.data_blob.is_empty()
     }
 
     fn public_json(&self) -> String {
@@ -93,14 +93,14 @@ impl BaseModel for SessionSensorData {
     }
 
     fn fill_from(&mut self, other: &Self) {
-        if self.id.is_empty() {
-            self.id = other.get_id().to_string()
+        if self.id == -1 {
+            self.id = other.get_id().clone()
         }
         if self.datetime.is_empty() {
             self.datetime = other.get_datetime().to_string()
         }
         if self.data_blob.is_empty() {
-            self.data_blob = other.get_blob().clone()
+            self.data_blob = other.get_blob().to_string()
         }
     }
 
@@ -123,11 +123,14 @@ impl BaseModel for SessionSensorData {
          -> Result<Self> {
             match HttpPath::subsection(&subpath, 0) {
                 Some(id) => match HttpPath::subsection(&subpath, 1) {
-                    Some(datetime) => database.update_session_sensor_datapoint(
-                        id,
-                        datetime,
-                        &updated_session_sensor_datapoint,
-                    ),
+                    Some(datetime) => match id.parse::<i64>() {
+                        Ok(id) => database.update_session_sensor_datapoint(
+                            id,
+                            datetime,
+                            &updated_session_sensor_datapoint,
+                        ),
+                        Err(e) => Err(format!("Failed to parse id to i64: {e}")),
+                    },
                     None => Err(format!("Missing identifier in path: {subpath}")),
                 },
                 None => Err(format!("Missing identifier in path: {subpath}")),
@@ -142,7 +145,10 @@ impl BaseModel for SessionSensorData {
         |database: &dyn Database, subpath: &str| -> Result<()> {
             match HttpPath::subsection(&subpath, 0) {
                 Some(id) => match HttpPath::subsection(&subpath, 1) {
-                    Some(datetime) => database.delete_session_sensor_datapoint(id, datetime),
+                    Some(datetime) => match id.parse::<i64>() {
+                    Ok(id) => database.delete_session_sensor_datapoint(id, datetime),
+                    Err(e) => Err(format!("Failed to parse id to i64: {e}")),
+                },
                     None => Err(format!("Missing identifier in path: {subpath}")),
                 },
                 None => Err(format!("Missing identifier in path: {subpath}")),

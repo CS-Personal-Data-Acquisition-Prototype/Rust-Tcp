@@ -8,19 +8,19 @@ use super::base_model::BaseModel;
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct Session {
     #[serde(default)]
-    id: String,
+    id: i64,
     username: String,
 }
 
 impl Session {
-    pub fn new(id: String, username: String) -> Self {
+    pub fn new(id: i64, username: String) -> Self {
         Session { id, username }
     }
     #[allow(unused)]
     pub fn empty() -> Self {
-        Self::new(String::new(), String::new())
+        Self::new(-1, String::new())
     }
-    pub fn get_id(&self) -> &str {
+    pub fn get_id(&self) -> &i64 {
         &self.id
     }
 
@@ -34,7 +34,7 @@ impl BaseModel for Session {
     const REQUIRED_VALUES: &'static str = " Requires value \"username\": string";
 
     fn is_valid(&self) -> bool {
-        !self.id.is_empty() && !self.username.is_empty()
+        self.id >= 0 && !self.username.is_empty()
     }
 
     fn public_json(&self) -> String {
@@ -45,8 +45,8 @@ impl BaseModel for Session {
     }
 
     fn fill_from(&mut self, other: &Self) {
-        if self.id.is_empty() {
-            self.id = other.get_id().to_string()
+        if self.id == -1 {
+            self.id = other.get_id().clone()
         }
         if self.username.is_empty() {
             self.username = other.get_username().to_string()
@@ -68,7 +68,10 @@ impl BaseModel for Session {
     {
         |database: &dyn Database, subpath: &str, updated_session: Self| -> Result<Self> {
             match HttpPath::subsection(&subpath, 0) {
-                Some(id) => database.update_session(id, &updated_session),
+                Some(id) => match id.parse::<i64>() {
+                    Ok(id) => database.update_session(id, &updated_session),
+                    Err(e) => Err(format!("Failed to parse id to i64: {e}")),
+                },
                 None => Err(format!("Missing identifier in path: {subpath}")),
             }
         }
@@ -80,7 +83,10 @@ impl BaseModel for Session {
     {
         |database: &dyn Database, subpath: &str| -> Result<()> {
             match HttpPath::subsection(&subpath, 0) {
-                Some(id) => database.delete_session(id),
+                Some(id) => match id.parse::<i64>() {
+                    Ok(id) => database.delete_session(id),
+                    Err(e) => Err(format!("Failed to parse id to i64: {e}")),
+                },
                 None => Err(format!("Missing identifier in path: {subpath}")),
             }
         }

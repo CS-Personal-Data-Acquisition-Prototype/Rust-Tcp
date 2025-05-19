@@ -11,27 +11,28 @@ CREATE TABLE IF NOT EXISTS User (
 );
 
 CREATE TABLE IF NOT EXISTS Session (
-    sessionID TEXT PRIMARY KEY,
+    sessionID INTEGER PRIMARY KEY,
     username TEXT NOT NULL,
     FOREIGN KEY (username) REFERENCES User(username) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS Sensor (
-    sensorID TEXT PRIMARY KEY,
+    sensorID INTEGER PRIMARY KEY,
     type TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS Session_Sensor (
-    session_sensorID TEXT PRIMARY KEY,
-    sessionID TEXT NOT NULL,
-    sensorID TEXT NOT NULL,
+    session_sensorID INTEGER PRIMARY KEY,
+    sessionID INTEGER NOT NULL,
+    sensorID INTEGER NOT NULL,
     FOREIGN KEY (sessionID) REFERENCES Session(sessionID) ON DELETE CASCADE,
-    FOREIGN KEY (sensorID) REFERENCES Sensor(sensorID) ON DELETE CASCADE
+    FOREIGN KEY (sensorID) REFERENCES Sensor(sensorID) ON DELETE CASCADE,
+    UNIQUE (sessionID, sensorID)
 );
 
 CREATE TABLE IF NOT EXISTS Session_Sensor_Data (
     datetime TEXT,
-    session_sensorID TEXT,
+    session_sensorID INTEGER,
     data_blob TEXT NOT NULL,
     PRIMARY KEY (datetime, session_sensorID),
     FOREIGN KEY (session_sensorID) REFERENCES Session_Sensor(session_sensorID) ON DELETE CASCADE
@@ -188,12 +189,11 @@ impl Database for SqliteDatabase {
     fn insert_sensor(&self, sensor: &Sensor) -> Result<Sensor> {
         self.connection
             .execute(
-                "INSERT INTO Sensor (sensorID, type) VALUES (?1, ?2)",
-                params![sensor.get_id(), sensor.get_sensor_type()],
+                "INSERT INTO Sensor (type) VALUES (?1)",
+                params![sensor.get_sensor_type()],
             )
             .map_err(|e| e.to_string())?;
-
-        Ok(sensor.clone())
+        Ok(Sensor::new(self.connection.last_insert_rowid(), sensor.get_sensor_type().to_string()))
     }
 
     // Returns all rows from Sensor
@@ -217,7 +217,7 @@ impl Database for SqliteDatabase {
     }
 
     // Returns a single row from Sensor where sensorID matches
-    fn get_sensor(&self, sensor_id: &str) -> Result<Sensor> {
+    fn get_sensor(&self, sensor_id: i64) -> Result<Sensor> {
         let mut statement = self
             .connection
             .prepare("SELECT sensorID, type FROM Sensor WHERE sensorID = ?1")
@@ -232,7 +232,7 @@ impl Database for SqliteDatabase {
         Ok(sensor)
     }
 
-    fn update_sensor(&self, sensor_id: &str, updated_sensor: &Sensor) -> Result<Sensor> {
+    fn update_sensor(&self, sensor_id: i64, updated_sensor: &Sensor) -> Result<Sensor> {
         let rows_updated = self
             .connection
             .execute(
@@ -248,7 +248,7 @@ impl Database for SqliteDatabase {
         Ok(updated_sensor.clone())
     }
 
-    fn delete_sensor(&self, sensor_id: &str) -> Result<()> {
+    fn delete_sensor(&self, sensor_id: i64) -> Result<()> {
         let rows_updated = self
             .connection
             .execute("DELETE FROM Sensor WHERE sensorID = ?1", params![sensor_id])
@@ -266,16 +266,16 @@ impl Database for SqliteDatabase {
     fn insert_session(&self, session: &Session) -> Result<Session> {
         self.connection
             .execute(
-                "INSERT INTO Session (sessionID, username) VALUES (?1, ?2)",
-                params![session.get_id(), session.get_username()],
+                "INSERT INTO Session (username) VALUES (?1)",
+                params![session.get_username()],
             )
             .map_err(|e| e.to_string())?;
 
-        Ok(session.clone())
+        Ok(Session::new(self.connection.last_insert_rowid(), session.get_username().to_string()))
     }
 
     // Returns a single row from Session where sessionID matches
-    fn get_session(&self, session_id: &str) -> Result<Session> {
+    fn get_session(&self, session_id: i64) -> Result<Session> {
         let mut statement = self
             .connection
             .prepare("SELECT sessionID, username FROM Session WHERE sessionID = ?1")
@@ -332,7 +332,7 @@ impl Database for SqliteDatabase {
         Ok(session_vec)
     }
 
-    fn update_session(&self, session_id: &str, updated_session: &Session) -> Result<Session> {
+    fn update_session(&self, session_id: i64, updated_session: &Session) -> Result<Session> {
         let rows_updated = self
             .connection
             .execute(
@@ -348,7 +348,7 @@ impl Database for SqliteDatabase {
         Ok(updated_session.clone())
     }
 
-    fn delete_session(&self, session_id: &str) -> Result<()> {
+    fn delete_session(&self, session_id: i64) -> Result<()> {
         let rows_updated = self
             .connection
             .execute(
@@ -369,11 +369,11 @@ impl Database for SqliteDatabase {
     fn insert_session_sensor(&self, session_sensor: &SessionSensor) -> Result<SessionSensor> {
         self.connection
             .execute(
-                "INSERT INTO Session_Sensor (session_sensorID, sessionID, sensorID) VALUES (?1, ?2, ?3)",
-                params![session_sensor.get_id(), session_sensor.get_session_id(), session_sensor.get_sensor_id()]
+                "INSERT INTO Session_Sensor (sessionID, sensorID) VALUES (?1, ?2)",
+                params![session_sensor.get_session_id(), session_sensor.get_sensor_id()]
             ).map_err(|e| e.to_string())?;
 
-        Ok(session_sensor.clone())
+        Ok(SessionSensor::new(self.connection.last_insert_rowid(), *session_sensor.get_session_id(), *session_sensor.get_sensor_id()))
     }
 
     // Returns all rows from Session_Sensor
@@ -399,7 +399,7 @@ impl Database for SqliteDatabase {
     }
 
     // Returns rows from Session_Sensor where sessionID matches
-    fn get_session_sensors(&self, session_id: &str) -> Result<Vec<SessionSensor>> {
+    fn get_session_sensors(&self, session_id: i64) -> Result<Vec<SessionSensor>> {
         let mut statement = self
             .connection
             .prepare(
@@ -422,7 +422,7 @@ impl Database for SqliteDatabase {
     }
 
     // Returns a single row from Session_Sensor where session_sensorID matches
-    fn get_session_sensor(&self, session_sensor_id: &str) -> Result<SessionSensor> {
+    fn get_session_sensor(&self, session_sensor_id: i64) -> Result<SessionSensor> {
         let mut statement = self
             .connection
             .prepare(
@@ -440,7 +440,7 @@ impl Database for SqliteDatabase {
 
     fn update_session_sensor(
         &self,
-        session_sensor_id: &str,
+        session_sensor_id: i64,
         updated_session_sensor: &SessionSensor,
     ) -> Result<SessionSensor> {
         let rows_updated = self.connection
@@ -459,7 +459,7 @@ impl Database for SqliteDatabase {
         Ok(updated_session_sensor.clone())
     }
 
-    fn delete_session_sensor(&self, session_sensor_id: &str) -> Result<()> {
+    fn delete_session_sensor(&self, session_sensor_id: i64) -> Result<()> {
         let rows_updated = self
             .connection
             .execute(
@@ -523,9 +523,9 @@ impl Database for SqliteDatabase {
 
         let session_sensor_data_itr = statement
             .query_map([], |row| {
-                let id: String = row.get(0)?;
+                let id: i64 = row.get(0)?;
                 let datetime: String = row.get(1)?;
-                let data_blob: Vec<u8> = row.get(2)?;
+                let data_blob: String = row.get(2)?;
                 Ok(SessionSensorData::new(id, datetime, data_blob))
             })
             .map_err(|e| e.to_string())?;
@@ -538,20 +538,20 @@ impl Database for SqliteDatabase {
         Ok(session_sensor_data_vec)
     }
 
-    // Returns a single sensor data row from Session_Sensor_Data
-    fn get_sessions_sensor_data(&self, session_id: &str) -> Result<Vec<SessionSensorData>> {
+    // Returns all rows from Session_Sensor_Data where session_sensorID is in Session_Sensor where sessionID matches
+    fn get_sessions_sensor_data(&self, session_id: i64) -> Result<Vec<SessionSensorData>> {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT session_sensorID, datetime, data_blob FROM Session_Sensor_Data WHERE session_sensorID = ?1",
+                "SELECT session_sensorID, datetime, data_blob FROM Session_Sensor_Data WHERE session_sensorID IN (SELECT session_sensorID FROM Session_Sensor WHERE sessionID = ?1)",
             )
             .map_err(|e| e.to_string())?;
 
         let session_sensor_data_itr = statement
             .query_map(params![session_id], |row| {
-                let id: String = row.get(0)?;
+                let id: i64 = row.get(0)?;
                 let datetime: String = row.get(1)?;
-                let data_blob: Vec<u8> = row.get(2)?;
+                let data_blob: String = row.get(2)?;
                 Ok(SessionSensorData::new(id, datetime, data_blob))
             })
             .map_err(|e| e.to_string())?;
@@ -565,7 +565,7 @@ impl Database for SqliteDatabase {
     }
 
     // Returns all rows from Session_Sensor_Data where session_sensorID matches
-    fn get_session_sensor_data(&self, session_sensor_id: &str) -> Result<Vec<SessionSensorData>> {
+    fn get_session_sensor_data(&self, session_sensor_id: i64) -> Result<Vec<SessionSensorData>> {
         let mut statement = self
             .connection
             .prepare(
@@ -575,9 +575,9 @@ impl Database for SqliteDatabase {
 
         let session_sensor_data_itr = statement
             .query_map(params![session_sensor_id], |row| {
-                let id: String = row.get(0)?;
+                let id: i64 = row.get(0)?;
                 let datetime: String = row.get(1)?;
-                let data_blob: Vec<u8> = row.get(2)?;
+                let data_blob: String = row.get(2)?;
                 Ok(SessionSensorData::new(id, datetime, data_blob))
             })
             .map_err(|e| e.to_string())?;
@@ -593,7 +593,7 @@ impl Database for SqliteDatabase {
     // Returns a single datapoint that matches a session_sensor_id and datetime
     fn get_session_sensor_datapoint(
         &self,
-        session_sensor_id: &str,
+        session_sensor_id: i64,
         datetime: &str,
     ) -> Result<SessionSensorData> {
         let mut statement = self
@@ -607,9 +607,9 @@ impl Database for SqliteDatabase {
 
         let session_sensor_datapoint = statement
             .query_row(params![session_sensor_id, datetime], |row| {
-                let id: String = row.get(0)?;
+                let id: i64 = row.get(0)?;
                 let datetime: String = row.get(1)?;
-                let data_blob: Vec<u8> = row.get(2)?;
+                let data_blob: String = row.get(2)?;
 
                 Ok(SessionSensorData::new(id, datetime, data_blob))
             })
@@ -620,7 +620,7 @@ impl Database for SqliteDatabase {
 
     fn update_session_sensor_datapoint(
         &self,
-        session_sensor_id: &str,
+        session_sensor_id: i64,
         datetime: &str,
         updated_session_sensor_datapoint: &SessionSensorData,
     ) -> Result<SessionSensorData> {
@@ -640,7 +640,7 @@ impl Database for SqliteDatabase {
 
     fn delete_session_sensor_datapoint(
         &self,
-        session_sensor_id: &str,
+        session_sensor_id: i64,
         datetime: &str,
     ) -> Result<()> {
         let rows_updated = self
