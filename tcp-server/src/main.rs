@@ -553,7 +553,7 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                         },
                         Some(session_sensor_id) => match session_sensor_id.parse::<i64>() {
                             Ok(session_sensor_id) => match HttpPath::subsection(&subpath, 1) {
-                                Some(datetime) => match database.get_session_sensor_datapoint(session_sensor_id, &datetime.replace("%20", " ")) {
+                                Some(datetime) => match database.get_session_sensor_datapoint(session_sensor_id, &datetime) {
                                     Ok(datapoint) => datapoint.to_ok_response(),
                                     Err(_) => HttpResponse::json_404(&request.path.to_string()),
                                 },

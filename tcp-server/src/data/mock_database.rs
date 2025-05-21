@@ -1,3 +1,5 @@
+use serde_json::{Map, Value};
+
 //#![cfg(not(feature = "sql"))]
 use crate::models::{BaseModel, Sensor, Session, SessionSensor, SessionSensorData, User};
 
@@ -57,10 +59,10 @@ impl MockDatabase {
 
     pub fn sessions_sensors_data() -> Vec<SessionSensorData> {
         vec![
-            SessionSensorData::new(1, String::from("datetime_1"), "test_1".to_string()),
-            SessionSensorData::new(2, String::from("datetime_2"), "test_2".to_string()),
-            SessionSensorData::new(3, String::from("datetime_3"), "test_3".to_string()),
-            SessionSensorData::new(4, String::from("datetime_4"), "test_4".to_string()),
+            SessionSensorData::new(Some(1), String::from("datetime_1"), Value::Object(Map::new())),
+            SessionSensorData::new(Some(2), String::from("datetime_2"), Value::Object(Map::new())),
+            SessionSensorData::new(Some(3), String::from("datetime_3"), Value::Object(Map::new())),
+            SessionSensorData::new(Some(4), String::from("datetime_4"), Value::Object(Map::new())),
         ]
     }
 }
@@ -247,9 +249,9 @@ impl Database for MockDatabase {
         session_sensor_data: &SessionSensorData,
     ) -> Result<SessionSensorData> {
         Ok(SessionSensorData::new(
-            0,
+            Some(0),
             session_sensor_data.get_datetime().to_string(),
-            session_sensor_data.get_blob().to_string(),
+            session_sensor_data.get_blob().clone(),
         ))
     }
 
@@ -261,9 +263,9 @@ impl Database for MockDatabase {
             .iter()
             .map(|blob| {
                 SessionSensorData::new(
-                    0,
+                    Some(0),
                     blob.get_datetime().to_string(),
-                    blob.get_blob().to_string(),
+                    blob.get_blob().clone(),
                 )
             })
             .collect::<Vec<_>>())
@@ -282,9 +284,9 @@ impl Database for MockDatabase {
             .iter()
             .map(|blob| {
                 SessionSensorData::new(
-                    session_sensor_id,
+                    Some(session_sensor_id),
                     blob.get_datetime().to_string(),
-                    blob.get_blob().to_string(),
+                    blob.get_blob().clone(),
                 )
             })
             .collect())
@@ -296,9 +298,9 @@ impl Database for MockDatabase {
         datetime: &str,
     ) -> Result<SessionSensorData> {
         Ok(SessionSensorData::new(
-            session_id,
+            Some(session_id),
             datetime.to_string(),
-            String::new(),
+            Value::Object(Map::new()),
         ))
     }
 
@@ -311,9 +313,9 @@ impl Database for MockDatabase {
         let mut session_sensor_datapoint = SessionSensorData::empty();
         session_sensor_datapoint.fill_from(updated_session_sensor_datapoint);
         session_sensor_datapoint.fill_from(&SessionSensorData::new(
-            session_id,
+            Some(session_id),
             datetime.to_string(),
-            String::new(),
+            Value::Object(Map::new()),
         ));
         Ok(session_sensor_datapoint)
     }

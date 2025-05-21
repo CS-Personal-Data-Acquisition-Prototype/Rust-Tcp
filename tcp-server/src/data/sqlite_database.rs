@@ -490,7 +490,7 @@ impl Database for SqliteDatabase {
         self.connection
             .execute(
                 "INSERT INTO Session_Sensor_Data (sessionID, datetime, data_blob) VALUES (?1, ?2, ?3)",
-                params![session_sensor_data.get_id(), session_sensor_data.get_datetime(), session_sensor_data.get_blob()]
+                params![session_sensor_data.get_id(), session_sensor_data.get_datetime(), session_sensor_data.get_blob().to_string()]
             ).map_err(|e| e.to_string())?;
 
         Ok(session_sensor_data.clone())
@@ -509,7 +509,7 @@ impl Database for SqliteDatabase {
             self.connection
                 .execute(
                     "INSERT INTO Session_Sensor_Data (sessionID, datetime, data_blob) VALUES (?1, ?2, ?3)",
-                    params![data.get_id(), data.get_datetime(), data.get_blob()]
+                    params![data.get_id(), data.get_datetime(), data.get_blob().to_string()]
                 ).map_err(|e| e.to_string())?;
         }
 
@@ -532,7 +532,7 @@ impl Database for SqliteDatabase {
                 let id: i64 = row.get(0)?;
                 let datetime: String = row.get(1)?;
                 let data_blob: String = row.get(2)?;
-                Ok(SessionSensorData::new(id, datetime, data_blob))
+                Ok(SessionSensorData::new(Some(id), datetime, serde_json::from_str(&data_blob).unwrap_or_default()))
             })
             .map_err(|e| e.to_string())?;
 
@@ -558,7 +558,7 @@ impl Database for SqliteDatabase {
                 let id: i64 = row.get(0)?;
                 let datetime: String = row.get(1)?;
                 let data_blob: String = row.get(2)?;
-                Ok(SessionSensorData::new(id, datetime, data_blob))
+                Ok(SessionSensorData::new(Some(id), datetime, serde_json::from_str(&data_blob).unwrap_or_default()))
             })
             .map_err(|e| e.to_string())?;
 
@@ -584,7 +584,7 @@ impl Database for SqliteDatabase {
                 let id: i64 = row.get(0)?;
                 let datetime: String = row.get(1)?;
                 let data_blob: String = row.get(2)?;
-                Ok(SessionSensorData::new(id, datetime, data_blob))
+                Ok(SessionSensorData::new(Some(id), datetime, serde_json::from_str(&data_blob).unwrap_or_default()))
             })
             .map_err(|e| e.to_string())?;
 
@@ -617,7 +617,7 @@ impl Database for SqliteDatabase {
                 let datetime: String = row.get(1)?;
                 let data_blob: String = row.get(2)?;
 
-                Ok(SessionSensorData::new(id, datetime, data_blob))
+                Ok(SessionSensorData::new(Some(id), datetime, serde_json::from_str(&data_blob).unwrap_or_default()))
             })
             .map_err(|e| e.to_string())?;
 
@@ -633,7 +633,7 @@ impl Database for SqliteDatabase {
         let rows_updated = self.connection
             .execute(
                 "UPDATE Session_Sensor_Data SET sessionID = ?1, datetime = ?2, data_blob = ?3 WHERE datetime = ?4 AND sessionID = ?5",
-                params![updated_session_sensor_datapoint.get_id(), updated_session_sensor_datapoint.get_datetime(), updated_session_sensor_datapoint.get_blob(), datetime, session_id],
+                params![updated_session_sensor_datapoint.get_id().unwrap_or_default(), updated_session_sensor_datapoint.get_datetime(), updated_session_sensor_datapoint.get_blob().to_string(), datetime, session_id],
             )
             .map_err(|e| e.to_string())?;
 
