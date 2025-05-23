@@ -1,4 +1,4 @@
-use std::{io::Write, net::TcpStream};
+use std::{io::Write, net::TcpStream, sync::Mutex};
 
 use serde_json::json;
 
@@ -6,7 +6,7 @@ use super::{HttpHeader, HttpHeaderType, HttpStatus};
 
 pub struct HttpResponse {
     pub status: HttpStatus,
-    pub headers: HttpHeader,
+    pub headers: Mutex<HttpHeader>,
     pub body: String,
 }
 
@@ -14,7 +14,7 @@ impl HttpResponse {
     pub fn new(status: HttpStatus, header: HttpHeader, body: String) -> HttpResponse {
         HttpResponse {
             status,
-            headers: header,
+            headers: Mutex::new(header),
             body: body.trim_end_matches('\0').to_string(),
         }
     }
@@ -29,7 +29,7 @@ impl HttpResponse {
             self.status.as_str(),
             HttpHeaderType::ContentLength.as_str(),
             self.body.len(),
-            self.headers.to_string(),
+            self.headers.lock().unwrap().to_string(),
             self.body,
         )
     }
@@ -40,12 +40,15 @@ impl HttpResponse {
 
     pub fn send(&self, mut stream: TcpStream) -> Result<(), String> {
         let data: &[u8] = &self.to_bytes();
-        stream.write_all(data).map_err(|e| format!("Failed to send data (attempted {} bytes): {e}", data.len()))?;
-        stream.flush().map_err(|e| format!("Failed to flush after sending data: {e}"))?;
+        stream
+            .write_all(data)
+            .map_err(|e| format!("Failed to send data (attempted {} bytes): {e}", data.len()))?;
+        stream
+            .flush()
+            .map_err(|e| format!("Failed to flush after sending data: {e}"))?;
         Ok(())
     }
 
-    
     pub fn html_404() -> HttpResponse {
         HttpResponse::new(
             HttpStatus::NotFound,
@@ -66,7 +69,7 @@ impl HttpResponse {
         HttpResponse::new(
             HttpStatus::NoContent,
             HttpHeader::default_options(),
-            String::new()
+            String::new(),
         )
     }
 
