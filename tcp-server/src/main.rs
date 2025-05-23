@@ -168,16 +168,18 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                     let mut parsed_request =
                         HttpRequest::from_request_bytes(&buffer[..delim_index]);
 
-                    match parsed_request.headers.get(HttpHeaderType::Origin.as_str()) {
-                        Some(origin) if HttpHeader::AC_ORIGINS.contains(&origin.as_str()) => {},
-                        Some(invalid_origin) => break Err(format!(
-                                "Request origin invalid: expected one of [{}], recieved '{invalid_origin}'",
+                    if let HttpMethod::Options = parsed_request.method {
+                        match parsed_request.headers.get(HttpHeaderType::Origin.as_str()) {
+                            Some(origin) if HttpHeader::AC_ORIGINS.contains(&origin.as_str()) => {},
+                            Some(invalid_origin) => break Err(format!(
+                                    "Request origin invalid: expected one of [{}], recieved '{invalid_origin}'",
+                                    HttpHeader::AC_ORIGINS.join(", ")
+                                )),
+                            None => break Err(format!(
+                                "Request origin invalid: expected one of [{}], recieved None",
                                 HttpHeader::AC_ORIGINS.join(", ")
                             )),
-                        None => break Err(format!(
-                            "Request origin invalid: expected one of [{}], recieved None",
-                            HttpHeader::AC_ORIGINS.join(", ")
-                        )),
+                        }
                     }
 
                     let body_size = match parsed_request
@@ -238,7 +240,7 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
     println!("{total_bytes} total bytes read\n");
 
     let (origin, response) = match request_option {
-        Err(e) => (String::from("None"), HttpResponse::bad_request(&format!("Failed to parse request on the server: {e}"))),
+        Err(e) => (String::new(), HttpResponse::bad_request(&format!("Failed to parse request on the server: {e}"))),
         Ok(request) => {
             //construct response from possible pathways
             let gen_view =
@@ -247,10 +249,7 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
             (
                 match request.headers.get(HttpHeaderType::Origin.as_str()) {
                     Some(origin) => origin.to_string(),
-                    None => {
-                        eprintln!("Failed to extract origin from request header");
-                        String::from("None")
-                    },
+                    None => String::new(),
                 },
                 match request.path.clone() {
                     HttpPath::Index(_subpath) => gen_view("index.html"),
@@ -584,7 +583,7 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
         }
     };
     
-    response.headers.lock().unwrap().insert(HttpHeaderType::AcAllowOrigin.as_str().to_owned(), origin.to_string());
+    response.headers.lock().unwrap().insert(HttpHeaderType::AcAllowOrigin.as_str().to_owned(), origin);
 
     //send generated response //TODO: add stream identifier for error message
     if let Err(error) = response.send(stream) {
