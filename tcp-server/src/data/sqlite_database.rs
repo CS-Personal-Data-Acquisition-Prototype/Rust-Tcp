@@ -1,13 +1,50 @@
 use crate::models::{Sensor, Session, SessionSensor, SessionSensorData, User};
-use rusqlite::{params, Connection};
+use rusqlite::{params, params_from_iter, Connection};
 
 use super::Database;
 type Result<T> = crate::Result<T>;
+
+const SCHEMA_STATEMENT: &str = r#"
+CREATE TABLE IF NOT EXISTS User (
+    username TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS Session (
+    sessionID INTEGER PRIMARY KEY,
+    username TEXT NOT NULL,
+    FOREIGN KEY (username) REFERENCES User(username) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS Sensor (
+    sensorID INTEGER PRIMARY KEY,
+    type TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS Session_Sensor (
+    session_sensorID INTEGER PRIMARY KEY,
+    sessionID INTEGER NOT NULL,
+    sensorID INTEGER NOT NULL,
+    FOREIGN KEY (sessionID) REFERENCES Session(sessionID) ON DELETE CASCADE,
+    FOREIGN KEY (sensorID) REFERENCES Sensor(sensorID) ON DELETE CASCADE,
+    UNIQUE (sessionID, sensorID)
+);
+
+CREATE TABLE IF NOT EXISTS Session_Sensor_Data (
+    datetime TEXT,
+    sessionID INTEGER,
+    data_blob TEXT NOT NULL,
+    PRIMARY KEY (datetime, sessionID),
+    FOREIGN KEY (sessionID) REFERENCES Session(sessionID) ON DELETE CASCADE
+);
+"#;
 
 #[allow(unused)]
 pub struct SqliteDatabase {
     url: String,
     connection: Connection,
+    // Temp Mock database to replace the unimplemented functions for testing
+    mock_db: super::MockDatabase,
 }
 
 #[allow(unused)]
@@ -17,6 +54,7 @@ impl SqliteDatabase {
         Ok(SqliteDatabase {
             url: url.to_string(),
             connection,
+            mock_db: super::MockDatabase::new(),
         })
     }
 
@@ -25,32 +63,54 @@ impl SqliteDatabase {
         Ok(SqliteDatabase {
             url: ":memory:".to_string(),
             connection,
+            mock_db: super::MockDatabase::new(),
         })
+    }
+
+    // Function to initialize the database schema
+    pub fn init(&self) {
+        if let Err(e) = self.connection.execute_batch(SCHEMA_STATEMENT) {
+            panic!("Failed to create database schema: {e}")
+        }
     }
 }
 
 //TODO: impl Database for SqliteDatabase {}
 impl Database for SqliteDatabase {
+    fn temp_session_id_solution(&self) {
+        if let Err(e) = self
+            .connection
+            .execute_batch("UPDATE Session_Sensor_Data SET sessionID = 2 WHERE sessionID = 1")
+        {
+            eprintln!("Failed to update all sessionID `1` to `2`: {e}")
+        }
+    }
+
     /* Authentication */
     // TODO: Implement
     // No column for admin
-    fn is_admin(&self, _user: &User) -> bool {
-        todo!()
+    fn is_admin(&self, user: &User) -> bool {
+        self.mock_db.is_admin(user)
     }
 
     // TODO: Implement
-    fn login(&self, _user: &User) -> Result<String> {
-        todo!()
+    fn login(&self, user: &User) -> Result<String> {
+        self.mock_db.login(user)
     }
 
     // TODO: Implement
-    fn logout(&self, _session_id: &str) -> Result<()> {
-        todo!()
+    fn logout(&self, session_id: &str) -> Result<()> {
+        self.mock_db.logout(session_id)
     }
 
     // TODO: Implement
-    fn renew_session(&self, _old_session: &str) -> Result<String> {
-        todo!()
+    fn renew_session(&self, old_session: &str) -> Result<String> {
+        self.mock_db.renew_session(old_session)
+    }
+
+    //TODO: Implement
+    fn get_session_user(&self, session_id: &str) -> Result<User> {
+        self.mock_db.get_session_user(session_id)
     }
 
     /* User */
@@ -138,12 +198,14 @@ impl Database for SqliteDatabase {
     fn insert_sensor(&self, sensor: &Sensor) -> Result<Sensor> {
         self.connection
             .execute(
-                "INSERT INTO Sensor (sensorID, type) VALUES (?1, ?2)",
-                params![sensor.get_id(), sensor.get_sensor_type()],
+                "INSERT INTO Sensor (type) VALUES (?1)",
+                params![sensor.get_sensor_type()],
             )
             .map_err(|e| e.to_string())?;
-
-        Ok(sensor.clone())
+        Ok(Sensor::new(
+            self.connection.last_insert_rowid(),
+            sensor.get_sensor_type().to_string(),
+        ))
     }
 
     // Returns all rows from Sensor
@@ -167,7 +229,7 @@ impl Database for SqliteDatabase {
     }
 
     // Returns a single row from Sensor where sensorID matches
-    fn get_sensor(&self, sensor_id: &str) -> Result<Sensor> {
+    fn get_sensor(&self, sensor_id: i64) -> Result<Sensor> {
         let mut statement = self
             .connection
             .prepare("SELECT sensorID, type FROM Sensor WHERE sensorID = ?1")
@@ -182,7 +244,7 @@ impl Database for SqliteDatabase {
         Ok(sensor)
     }
 
-    fn update_sensor(&self, sensor_id: &str, updated_sensor: &Sensor) -> Result<Sensor> {
+    fn update_sensor(&self, sensor_id: i64, updated_sensor: &Sensor) -> Result<Sensor> {
         let rows_updated = self
             .connection
             .execute(
@@ -198,7 +260,7 @@ impl Database for SqliteDatabase {
         Ok(updated_sensor.clone())
     }
 
-    fn delete_sensor(&self, sensor_id: &str) -> Result<()> {
+    fn delete_sensor(&self, sensor_id: i64) -> Result<()> {
         let rows_updated = self
             .connection
             .execute("DELETE FROM Sensor WHERE sensorID = ?1", params![sensor_id])
@@ -216,16 +278,19 @@ impl Database for SqliteDatabase {
     fn insert_session(&self, session: &Session) -> Result<Session> {
         self.connection
             .execute(
-                "INSERT INTO Session (sessionID, username) VALUES (?1, ?2)",
-                params![session.get_id(), session.get_username()],
+                "INSERT INTO Session (username) VALUES (?1)",
+                params![session.get_username()],
             )
             .map_err(|e| e.to_string())?;
 
-        Ok(session.clone())
+        Ok(Session::new(
+            self.connection.last_insert_rowid(),
+            session.get_username().to_string(),
+        ))
     }
 
     // Returns a single row from Session where sessionID matches
-    fn get_session(&self, session_id: &str) -> Result<Session> {
+    fn get_session(&self, session_id: i64) -> Result<Session> {
         let mut statement = self
             .connection
             .prepare("SELECT sessionID, username FROM Session WHERE sessionID = ?1")
@@ -238,27 +303,6 @@ impl Database for SqliteDatabase {
             .map_err(|e| e.to_string())?;
 
         Ok(session)
-    }
-
-    // Returns a row from User where sessionID matches
-    fn get_session_user(&self, session_id: &str) -> Result<User> {
-        let mut statement = self
-            .connection
-            .prepare(
-                "SELECT User.username, User.password_hash
-             FROM Session
-             JOIN User ON Session.username = User.username
-             WHERE Session.sessionID = ?1",
-            )
-            .map_err(|e| e.to_string())?;
-
-        let user = statement
-            .query_row(params![session_id], |row| {
-                Ok(User::new(row.get(0)?, row.get(1)?))
-            })
-            .map_err(|e| e.to_string())?;
-
-        Ok(user)
     }
 
     // Returns rows from Session where username matches
@@ -303,7 +347,7 @@ impl Database for SqliteDatabase {
         Ok(session_vec)
     }
 
-    fn update_session(&self, session_id: &str, updated_session: &Session) -> Result<Session> {
+    fn update_session(&self, session_id: i64, updated_session: &Session) -> Result<Session> {
         let rows_updated = self
             .connection
             .execute(
@@ -319,7 +363,7 @@ impl Database for SqliteDatabase {
         Ok(updated_session.clone())
     }
 
-    fn delete_session(&self, session_id: &str) -> Result<()> {
+    fn delete_session(&self, session_id: i64) -> Result<()> {
         let rows_updated = self
             .connection
             .execute(
@@ -340,11 +384,19 @@ impl Database for SqliteDatabase {
     fn insert_session_sensor(&self, session_sensor: &SessionSensor) -> Result<SessionSensor> {
         self.connection
             .execute(
-                "INSERT INTO Session_Sensor (session_sensorID, sessionID, sensorID) VALUES (?1, ?2, ?3)",
-                params![session_sensor.get_id(), session_sensor.get_session_id(), session_sensor.get_sensor_id()]
-            ).map_err(|e| e.to_string())?;
+                "INSERT INTO Session_Sensor (sessionID, sensorID) VALUES (?1, ?2)",
+                params![
+                    session_sensor.get_session_id(),
+                    session_sensor.get_sensor_id()
+                ],
+            )
+            .map_err(|e| e.to_string())?;
 
-        Ok(session_sensor.clone())
+        Ok(SessionSensor::new(
+            self.connection.last_insert_rowid(),
+            *session_sensor.get_session_id(),
+            *session_sensor.get_sensor_id(),
+        ))
     }
 
     // Returns all rows from Session_Sensor
@@ -370,7 +422,7 @@ impl Database for SqliteDatabase {
     }
 
     // Returns rows from Session_Sensor where sessionID matches
-    fn get_session_sensors(&self, session_id: &str) -> Result<Vec<SessionSensor>> {
+    fn get_session_sensors(&self, session_id: i64) -> Result<Vec<SessionSensor>> {
         let mut statement = self
             .connection
             .prepare(
@@ -393,7 +445,7 @@ impl Database for SqliteDatabase {
     }
 
     // Returns a single row from Session_Sensor where session_sensorID matches
-    fn get_session_sensor(&self, session_sensor_id: &str) -> Result<SessionSensor> {
+    fn get_session_sensor(&self, session_sensor_id: i64) -> Result<SessionSensor> {
         let mut statement = self
             .connection
             .prepare(
@@ -409,10 +461,9 @@ impl Database for SqliteDatabase {
         Ok(session_sensor)
     }
 
-    // TODO: Implement
     fn update_session_sensor(
         &self,
-        session_sensor_id: &str,
+        session_sensor_id: i64,
         updated_session_sensor: &SessionSensor,
     ) -> Result<SessionSensor> {
         let rows_updated = self.connection
@@ -431,9 +482,20 @@ impl Database for SqliteDatabase {
         Ok(updated_session_sensor.clone())
     }
 
-    // TODO: Implement
-    fn delete_session_sensor(&self, _session_sensor_id: &str) -> Result<()> {
-        todo!()
+    fn delete_session_sensor(&self, session_sensor_id: i64) -> Result<()> {
+        let rows_updated = self
+            .connection
+            .execute(
+                "DELETE FROM Session_Sensor WHERE session_sensorID = ?1",
+                params![session_sensor_id],
+            )
+            .map_err(|e| e.to_string())?;
+
+        if rows_updated == 0 {
+            return Err("Failed to delete from Session_Sensor".into());
+        }
+
+        Ok(())
     }
 
     /* Session Sensor Data */
@@ -444,7 +506,7 @@ impl Database for SqliteDatabase {
     ) -> Result<SessionSensorData> {
         self.connection
             .execute(
-                "INSERT INTO Session_Sensor_Data (session_sensorID, datetime, data_blob) VALUES (?1, ?2, ?3)",
+                "INSERT INTO Session_Sensor_Data (sessionID, datetime, data_blob) VALUES (?1, ?2, ?3)",
                 params![session_sensor_data.get_id(), session_sensor_data.get_datetime(), session_sensor_data.get_blob().to_string()]
             ).map_err(|e| e.to_string())?;
 
@@ -456,21 +518,31 @@ impl Database for SqliteDatabase {
         &self,
         data_blobs: &Vec<SessionSensorData>,
     ) -> Result<Vec<SessionSensorData>> {
-        self.connection
-            .execute_batch("BEGIN TRANSACTION;")
-            .map_err(|e| e.to_string())?;
-
-        for data in data_blobs {
-            self.connection
-                .execute(
-                    "INSERT INTO Session_Sensor_Data (session_sensorID, datetime, data_blob) VALUES (?1, ?2, ?3)",
-                    params![data.get_id(), data.get_datetime(), data.get_blob().to_string()]
-                ).map_err(|e| e.to_string())?;
+        if data_blobs.is_empty() {
+            return Ok(vec![]);
         }
 
-        self.connection
-            .execute_batch("COMMIT;")
-            .map_err(|e| e.to_string())?;
+        for chunk in data_blobs.chunks(500) {
+            let sql = format!(
+                "INSERT INTO Session_Sensor_Data (sessionID, datetime, data_blob) VALUES {}",
+                chunk
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| format!("(?{}, ?{}, ?{})", 3 * i + 1, 3 * i + 2, 3 * i + 3))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+
+            let params = chunk.iter()
+                 .flat_map(|data| [
+                    Box::new(data.get_id().unwrap_or(-1)) as Box<dyn rusqlite::ToSql>,
+                    Box::new(data.get_datetime()),
+                    Box::new(data.get_blob().to_string()),
+                ])
+                .collect::<Vec<Box<dyn rusqlite::ToSql>>>();
+
+            self.connection.execute(&sql, params_from_iter(params)).map_err(|e| e.to_string())?;
+        }
 
         Ok(data_blobs.clone())
     }
@@ -479,28 +551,23 @@ impl Database for SqliteDatabase {
     fn get_sessions_sensors_data(&self) -> Result<Vec<SessionSensorData>> {
         let mut statement = self
             .connection
-            .prepare("SELECT session_sensorID, datetime, data_blob FROM Session_Sensor_Data")
+            .prepare("SELECT sessionID, datetime, data_blob FROM Session_Sensor_Data")
             .map_err(|e| e.to_string())?;
 
         let session_sensor_data_itr = statement
             .query_map([], |row| {
-                let blob_data: Vec<u8> = row.get(2)?;
+                let id: i64 = row.get(0)?;
+                let datetime: String = row.get(1)?;
+                let data_blob: String = row.get(2)?;
                 Ok(SessionSensorData::new(
-                    row.get(0)?,
-                    row.get(1)?,
-                    serde_json::from_slice(&blob_data).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(
-                            2,
-                            rusqlite::types::Type::Blob,
-                            Box::new(e),
-                        )
-                    })?,
+                    Some(id),
+                    datetime,
+                    serde_json::from_str(&data_blob).unwrap_or_default(),
                 ))
             })
             .map_err(|e| e.to_string())?;
 
         let mut session_sensor_data_vec = Vec::new();
-
         for session_sensor_data in session_sensor_data_itr {
             session_sensor_data_vec.push(session_sensor_data.map_err(|e| e.to_string())?);
         }
@@ -508,32 +575,29 @@ impl Database for SqliteDatabase {
         Ok(session_sensor_data_vec)
     }
 
-    fn get_sessions_sensor_data(&self, session_id: &str) -> Result<Vec<SessionSensorData>> {
+    // Returns all rows from Session_Sensor_Data where session_sensorID is in Session_Sensor where sessionID matches
+    fn get_sessions_sensor_data(&self, session_id: i64) -> Result<Vec<SessionSensorData>> {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT session_sensorID, datetime, data_blob FROM Session_Sensor_Data WHERE session_sensorID = ?1"
-            ).map_err(|e| e.to_string())?;
+                "SELECT sessionID, datetime, data_blob FROM Session_Sensor_Data WHERE sessionID = ?1",
+            )
+            .map_err(|e| e.to_string())?;
 
         let session_sensor_data_itr = statement
             .query_map(params![session_id], |row| {
-                let blob_data: Vec<u8> = row.get(2)?;
+                let id: i64 = row.get(0)?;
+                let datetime: String = row.get(1)?;
+                let data_blob: String = row.get(2)?;
                 Ok(SessionSensorData::new(
-                    row.get(0)?,
-                    row.get(1)?,
-                    serde_json::from_slice(&blob_data).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(
-                            2,
-                            rusqlite::types::Type::Blob,
-                            Box::new(e),
-                        )
-                    })?,
+                    Some(id),
+                    datetime,
+                    serde_json::from_str(&data_blob).unwrap_or_default(),
                 ))
             })
             .map_err(|e| e.to_string())?;
 
         let mut session_sensor_data_vec = Vec::new();
-
         for session_sensor_data in session_sensor_data_itr {
             session_sensor_data_vec.push(session_sensor_data.map_err(|e| e.to_string())?);
         }
@@ -542,32 +606,28 @@ impl Database for SqliteDatabase {
     }
 
     // Returns all rows from Session_Sensor_Data where session_sensorID matches
-    fn get_session_sensor_data(&self, session_sensor_id: &str) -> Result<Vec<SessionSensorData>> {
+    fn get_session_sensor_data(&self, session_sensor_id: i64) -> Result<Vec<SessionSensorData>> {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT session_sensorID, datetime, data_blob FROM Session_Sensor_Data WHERE session_sensorID = ?1"
-            ).map_err(|e| e.to_string())?;
+                "SELECT sessionID, datetime, data_blob FROM Session_Sensor_Data WHERE sessionID = (SELECT sessionID FROM Session_Sensor WHERE session_sensorID = ?1)",
+            )
+            .map_err(|e| e.to_string())?;
 
         let session_sensor_data_itr = statement
             .query_map(params![session_sensor_id], |row| {
-                let blob_data: Vec<u8> = row.get(2)?;
+                let id: i64 = row.get(0)?;
+                let datetime: String = row.get(1)?;
+                let data_blob: String = row.get(2)?;
                 Ok(SessionSensorData::new(
-                    row.get(0)?,
-                    row.get(1)?,
-                    serde_json::from_slice(&blob_data).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(
-                            2,
-                            rusqlite::types::Type::Blob,
-                            Box::new(e),
-                        )
-                    })?,
+                    Some(id),
+                    datetime,
+                    serde_json::from_str(&data_blob).unwrap_or_default(),
                 ))
             })
             .map_err(|e| e.to_string())?;
 
         let mut session_sensor_data_vec = Vec::new();
-
         for session_sensor_data in session_sensor_data_itr {
             session_sensor_data_vec.push(session_sensor_data.map_err(|e| e.to_string())?);
         }
@@ -578,31 +638,28 @@ impl Database for SqliteDatabase {
     // Returns a single datapoint that matches a session_sensor_id and datetime
     fn get_session_sensor_datapoint(
         &self,
-        session_sensor_id: &str,
+        session_id: i64,
         datetime: &str,
     ) -> Result<SessionSensorData> {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT session_sensorID, datetime, data_blob FROM Session_Sensor_Data 
-             WHERE session_sensorID = ?1
+                "SELECT sessionID, datetime, data_blob FROM Session_Sensor_Data 
+             WHERE sessionID = ?1
              AND datetime = ?2",
             )
             .map_err(|e| e.to_string())?;
 
         let session_sensor_datapoint = statement
-            .query_row(params![session_sensor_id, datetime], |row| {
-                let blob_data: Vec<u8> = row.get(2)?;
+            .query_row(params![session_id, datetime], |row| {
+                let id: i64 = row.get(0)?;
+                let datetime: String = row.get(1)?;
+                let data_blob: String = row.get(2)?;
+
                 Ok(SessionSensorData::new(
-                    row.get(0)?,
-                    row.get(1)?,
-                    serde_json::from_slice(&blob_data).map_err(|e| {
-                        rusqlite::Error::FromSqlConversionFailure(
-                            2,
-                            rusqlite::types::Type::Blob,
-                            Box::new(e),
-                        )
-                    })?,
+                    Some(id),
+                    datetime,
+                    serde_json::from_str(&data_blob).unwrap_or_default(),
                 ))
             })
             .map_err(|e| e.to_string())?;
@@ -610,22 +667,39 @@ impl Database for SqliteDatabase {
         Ok(session_sensor_datapoint)
     }
 
-    // TODO: Implement
     fn update_session_sensor_datapoint(
         &self,
-        _session_sensor_id: &str,
-        _datetime: &str,
-        _updated_session_sensor_datapoint: &SessionSensorData,
+        session_id: i64,
+        datetime: &str,
+        updated_session_sensor_datapoint: &SessionSensorData,
     ) -> Result<SessionSensorData> {
-        unimplemented!()
+        let rows_updated = self.connection
+            .execute(
+                "UPDATE Session_Sensor_Data SET sessionID = ?1, datetime = ?2, data_blob = ?3 WHERE datetime = ?4 AND sessionID = ?5",
+                params![updated_session_sensor_datapoint.get_id().unwrap_or_default(), updated_session_sensor_datapoint.get_datetime(), updated_session_sensor_datapoint.get_blob().to_string(), datetime, session_id],
+            )
+            .map_err(|e| e.to_string())?;
+
+        if rows_updated == 0 {
+            return Err("Failed to update Session_Sensor_Data".into());
+        }
+
+        Ok(updated_session_sensor_datapoint.clone())
     }
 
-    // TODO: Implement
-    fn delete_session_sensor_datapoint(
-        &self,
-        _session_sensor_id: &str,
-        _datetime: &str,
-    ) -> Result<()> {
-        unimplemented!()
+    fn delete_session_sensor_datapoint(&self, session_id: i64, datetime: &str) -> Result<()> {
+        let rows_updated = self
+            .connection
+            .execute(
+                "DELETE FROM Session_Sensor_Data WHERE sessionID = ?1 AND datetime = ?2",
+                params![session_id, datetime],
+            )
+            .map_err(|e| e.to_string())?;
+
+        if rows_updated == 0 {
+            return Err("Failed to delete from Session_Sensor_Data".into());
+        }
+
+        Ok(())
     }
 }

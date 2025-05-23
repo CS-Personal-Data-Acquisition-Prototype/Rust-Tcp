@@ -1,3 +1,6 @@
+use serde_json::{Map, Value};
+
+//#![cfg(not(feature = "sql"))]
 use crate::models::{BaseModel, Sensor, Session, SessionSensor, SessionSensorData, User};
 
 use super::Database;
@@ -10,8 +13,8 @@ impl MockDatabase {
     const USERNAME: &'static str = "username";
     const PASSWORD: &'static str = "password";
     const COOKIE_SESSION_ID: &'static str = "cookie_session_id";
-    const SESSION_ID: &'static str = "session_id";
-    const SENSOR_ID: &'static str = "sensor_id";
+    const SESSION_ID: i64 = 12345;
+    const SENSOR_ID: i64 = 67890;
     const SENSOR_TYPE: &'static str = "sensor_type";
 
     pub fn new() -> MockDatabase {
@@ -29,61 +32,44 @@ impl MockDatabase {
 
     pub fn sensors() -> Vec<Sensor> {
         vec![
-            Sensor::new(String::from("id_1"), String::from("sensor_type_1")),
-            Sensor::new(String::from("id_2"), String::from("sensor_type_2")),
-            Sensor::new(String::from("id_3"), String::from("sensor_type_3")),
-            Sensor::new(String::from("id_4"), String::from("sensor_type_4")),
+            Sensor::new(1, String::from("sensor_type_1")),
+            Sensor::new(2, String::from("sensor_type_2")),
+            Sensor::new(3, String::from("sensor_type_3")),
+            Sensor::new(4, String::from("sensor_type_4")),
         ]
     }
 
     pub fn sessions() -> Vec<Session> {
         vec![
-            Session::new(String::from("session_id_1"), String::from("username_1")),
-            Session::new(String::from("session_id_2"), String::from("username_2")),
-            Session::new(String::from("session_id_3"), String::from("username_3")),
-            Session::new(String::from("session_id_4"), String::from("username_4")),
+            Session::new(1, String::from("username_1")),
+            Session::new(2, String::from("username_2")),
+            Session::new(3, String::from("username_3")),
+            Session::new(4, String::from("username_4")),
         ]
     }
 
     pub fn sessions_sensors() -> Vec<SessionSensor> {
         vec![
-            SessionSensor::new(
-                String::from("session_sensor_id_1"),
-                String::from("session_id_1"),
-                String::from("sensor_id_1"),
-            ),
-            SessionSensor::new(
-                String::from("session_sensor_id_2"),
-                String::from("session_id_2"),
-                String::from("sensor_id_2"),
-            ),
-            SessionSensor::new(
-                String::from("session_sensor_id_3"),
-                String::from("session_id_3"),
-                String::from("sensor_id_3"),
-            ),
-            SessionSensor::new(
-                String::from("session_sensor_id_4"),
-                String::from("session_id_4"),
-                String::from("sensor_id_4"),
-            ),
+            SessionSensor::new(1, 1, 1),
+            SessionSensor::new(2, 2, 2),
+            SessionSensor::new(3, 3, 3),
+            SessionSensor::new(4, 4, 4),
         ]
     }
 
     pub fn sessions_sensors_data() -> Vec<SessionSensorData> {
-        let mut map = serde_json::Map::new();
-        map.insert("data_blob".to_string(), serde_json::Value::Null);
-        let blob = serde_json::Value::Object(map);
         vec![
-            SessionSensorData::new(Some(1), String::from("datetime_1"), blob.clone()),
-            SessionSensorData::new(Some(2), String::from("datetime_2"), blob.clone()),
-            SessionSensorData::new(Some(3), String::from("datetime_3"), blob.clone()),
-            SessionSensorData::new(Some(4), String::from("datetime_4"), blob),
+            SessionSensorData::new(Some(1), String::from("datetime_1"), Value::Object(Map::new())),
+            SessionSensorData::new(Some(2), String::from("datetime_2"), Value::Object(Map::new())),
+            SessionSensorData::new(Some(3), String::from("datetime_3"), Value::Object(Map::new())),
+            SessionSensorData::new(Some(4), String::from("datetime_4"), Value::Object(Map::new())),
         ]
     }
 }
 
 impl Database for MockDatabase {
+    fn temp_session_id_solution(&self) {}
+
     fn get_session_user(&self, session_id: &str) -> Result<User> {
         Ok(User::new(
             session_id.to_string(),
@@ -137,7 +123,7 @@ impl Database for MockDatabase {
     /* Sensor */
     fn insert_sensor(&self, sensor: &Sensor) -> Result<Sensor> {
         Ok(Sensor::new(
-            String::from(MockDatabase::SENSOR_ID),
+            MockDatabase::SENSOR_ID,
             sensor.get_sensor_type().to_string(),
         ))
     }
@@ -146,38 +132,35 @@ impl Database for MockDatabase {
         Ok(MockDatabase::sensors())
     }
 
-    fn get_sensor(&self, sensor_id: &str) -> Result<Sensor> {
-        Ok(Sensor::new(
-            sensor_id.to_string(),
-            String::from("sensor_type"),
-        ))
+    fn get_sensor(&self, sensor_id: i64) -> Result<Sensor> {
+        Ok(Sensor::new(sensor_id, String::from("sensor_type")))
     }
 
-    fn update_sensor(&self, sensor_id: &str, updated_sensor: &Sensor) -> Result<Sensor> {
+    fn update_sensor(&self, sensor_id: i64, updated_sensor: &Sensor) -> Result<Sensor> {
         let mut sensor = Sensor::empty();
         sensor.fill_from(updated_sensor);
         sensor.fill_from(&Sensor::new(
-            sensor_id.to_string(),
+            sensor_id,
             MockDatabase::SENSOR_TYPE.to_string(),
         ));
         Ok(sensor)
     }
 
-    fn delete_sensor(&self, _sensor_id: &str) -> Result<()> {
+    fn delete_sensor(&self, _sensor_id: i64) -> Result<()> {
         Ok(())
     }
 
     /* Session */
     fn insert_session(&self, session: &Session) -> Result<Session> {
         Ok(Session::new(
-            String::from(MockDatabase::SESSION_ID),
+            MockDatabase::SESSION_ID,
             session.get_username().to_string(),
         ))
     }
 
-    fn get_session(&self, session_id: &str) -> Result<Session> {
+    fn get_session(&self, session_id: i64) -> Result<Session> {
         Ok(Session::new(
-            session_id.to_string(),
+            session_id,
             String::from(MockDatabase::USERNAME),
         ))
     }
@@ -185,7 +168,7 @@ impl Database for MockDatabase {
     fn get_user_sessions(&self, username: &str) -> Result<Vec<Session>> {
         Ok(MockDatabase::sessions()
             .iter()
-            .map(|session| Session::new(session.get_id().to_string(), username.to_string()))
+            .map(|session| Session::new(session.get_id().clone(), username.to_string()))
             .collect::<Vec<_>>())
     }
 
@@ -193,26 +176,26 @@ impl Database for MockDatabase {
         Ok(MockDatabase::sessions())
     }
 
-    fn update_session(&self, session_id: &str, updated_session: &Session) -> Result<Session> {
+    fn update_session(&self, session_id: i64, updated_session: &Session) -> Result<Session> {
         let mut session = Session::empty();
         session.fill_from(updated_session);
         session.fill_from(&Session::new(
-            session_id.to_string(),
+            session_id,
             MockDatabase::PASSWORD.to_string(),
         ));
         Ok(session)
     }
 
-    fn delete_session(&self, _session_id: &str) -> Result<()> {
+    fn delete_session(&self, _session_id: i64) -> Result<()> {
         Ok(())
     }
 
     /* Session Sensor */
     fn insert_session_sensor(&self, session_sensor: &SessionSensor) -> Result<SessionSensor> {
         Ok(SessionSensor::new(
-            String::from("session_sensor_id"),
-            session_sensor.get_session_id().to_string(),
-            session_sensor.get_sensor_id().to_string(),
+            1,
+            session_sensor.get_session_id().clone(),
+            session_sensor.get_sensor_id().clone(),
         ))
     }
 
@@ -220,43 +203,43 @@ impl Database for MockDatabase {
         Ok(MockDatabase::sessions_sensors())
     }
 
-    fn get_session_sensors(&self, session_id: &str) -> Result<Vec<SessionSensor>> {
+    fn get_session_sensors(&self, session_id: i64) -> Result<Vec<SessionSensor>> {
         Ok(MockDatabase::sessions_sensors()
             .iter()
             .map(|session_sensor| {
                 SessionSensor::new(
-                    session_sensor.get_id().to_string(),
-                    session_id.to_string(),
-                    session_sensor.get_sensor_id().to_string(),
+                    session_sensor.get_id().clone(),
+                    session_id,
+                    session_sensor.get_sensor_id().clone(),
                 )
             })
             .collect::<Vec<_>>())
     }
 
-    fn get_session_sensor(&self, session_sensor_id: &str) -> Result<SessionSensor> {
+    fn get_session_sensor(&self, session_sensor_id: i64) -> Result<SessionSensor> {
         Ok(SessionSensor::new(
-            session_sensor_id.to_string(),
-            String::from("session_id"),
-            String::from("sensor_id"),
+            session_sensor_id,
+            session_sensor_id + 1,
+            session_sensor_id + 2,
         ))
     }
 
     fn update_session_sensor(
         &self,
-        session_sensor_id: &str,
+        session_sensor_id: i64,
         updated_session_sensor: &SessionSensor,
     ) -> Result<SessionSensor> {
         let mut session_sensor = SessionSensor::empty();
         session_sensor.fill_from(updated_session_sensor);
         session_sensor.fill_from(&SessionSensor::new(
-            session_sensor_id.to_string(),
-            MockDatabase::SESSION_ID.to_string(),
-            MockDatabase::SENSOR_ID.to_string(),
+            session_sensor_id,
+            MockDatabase::SESSION_ID,
+            MockDatabase::SENSOR_ID,
         ));
         Ok(session_sensor)
     }
 
-    fn delete_session_sensor(&self, _session_sensor_id: &str) -> Result<()> {
+    fn delete_session_sensor(&self, _session_sensor_id: i64) -> Result<()> {
         Ok(())
     }
 
@@ -292,77 +275,54 @@ impl Database for MockDatabase {
         Ok(MockDatabase::sessions_sensors_data())
     }
 
-    fn get_sessions_sensor_data(&self, _session_id: &str) -> Result<Vec<SessionSensorData>> {
+    fn get_sessions_sensor_data(&self, _session_id: i64) -> Result<Vec<SessionSensorData>> {
         Ok(MockDatabase::sessions_sensors_data())
     }
 
-    fn get_session_sensor_data(&self, session_sensor_id: &str) -> Result<Vec<SessionSensorData>> {
+    fn get_session_sensor_data(&self, session_sensor_id: i64) -> Result<Vec<SessionSensorData>> {
         Ok(MockDatabase::sessions_sensors_data()
             .iter()
             .map(|blob| {
-                let id = match session_sensor_id.parse::<usize>() {
-                    Ok(num) => Some(num),
-                    Err(e) => {
-                        eprintln!(
-                            "Failed to parse id ({session_sensor_id}) from string into usize: {e}"
-                        );
-                        None
-                    }
-                };
-                SessionSensorData::new(id, blob.get_datetime().to_string(), blob.get_blob().clone())
+                SessionSensorData::new(
+                    Some(session_sensor_id),
+                    blob.get_datetime().to_string(),
+                    blob.get_blob().clone(),
+                )
             })
-            .collect::<Vec<_>>())
+            .collect())
     }
 
     fn get_session_sensor_datapoint(
         &self,
-        session_sensor_id: &str,
+        session_id: i64,
         datetime: &str,
     ) -> Result<SessionSensorData> {
-        let id = match session_sensor_id.parse::<usize>() {
-            Ok(num) => Some(num),
-            Err(e) => {
-                eprintln!("Failed to parse id ({session_sensor_id}) from string into usize: {e}");
-                None
-            }
-        };
-        let mut map = serde_json::Map::new();
-        map.insert("data_blob".to_string(), serde_json::Value::Null);
         Ok(SessionSensorData::new(
-            id,
+            Some(session_id),
             datetime.to_string(),
-            serde_json::Value::Object(map),
+            Value::Object(Map::new()),
         ))
     }
 
     fn update_session_sensor_datapoint(
         &self,
-        session_sensor_id: &str,
+        session_id: i64,
         datetime: &str,
         updated_session_sensor_datapoint: &SessionSensorData,
     ) -> Result<SessionSensorData> {
-        let id = match session_sensor_id.parse::<usize>() {
-            Ok(id) => Some(id),
-            Err(e) => {
-                eprintln!("Failed to parse id ({session_sensor_id}) from string to usize: {e}");
-                None
-            }
-        };
-        let mut map = serde_json::Map::new();
-        map.insert("data_blob".to_string(), serde_json::Value::Null);
         let mut session_sensor_datapoint = SessionSensorData::empty();
         session_sensor_datapoint.fill_from(updated_session_sensor_datapoint);
         session_sensor_datapoint.fill_from(&SessionSensorData::new(
-            id,
+            Some(session_id),
             datetime.to_string(),
-            serde_json::Value::Object(map),
+            Value::Object(Map::new()),
         ));
         Ok(session_sensor_datapoint)
     }
 
     fn delete_session_sensor_datapoint(
         &self,
-        _session_sensor_id: &str,
+        _session_id: i64,
         _datetime: &str,
     ) -> Result<()> {
         Ok(())

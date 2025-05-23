@@ -1,16 +1,23 @@
 # Rust-Tcp
-Navigate into the tcp-server file in a terminal
 
-To download packages & dependencies use: cargo build
+## Usage
+This crates defaults to a mock database connection when using `cargo build` or `cargo run`,<br>
+to utilize an SQLite database the crate must be built and ran with `--features sql`.
 
-To run the project use: cargo run
-To run in release mode: cargo run --release
+1. Open a terminal in the directory 'tcp-server'.
+
+2. To run the project in debug use the command:
+`cargo run [--features sql]`
+
+
+3. To run the project in release mode use the command:
+`cargo run --release [--features sql]`
 
 ## Configuration
 Add the configuration file `config.toml` in `src` directory, the config doesn't have any headers and the and default values look like this:
 ```toml
-database_path = ""          # path to database file
-local_addr = "0.0.0.0:7878" # local address to listen for TCP requests on
+database_file = "data_acquisition.db"   # name of database file
+local_addr = "0.0.0.0:7878"             # local address to listen for TCP requests on
 ```
 
 # License Notice

@@ -13,6 +13,7 @@ pub trait BaseModel {
     #[allow(unused)]
     fn is_valid(&self) -> bool;
     fn public_json(&self) -> String;
+    #[allow(unused)]
     fn fill_from(&mut self, other: &Self);
 
     fn insert_interface() -> impl FnOnce(&dyn Database, Self) -> Result<Self>

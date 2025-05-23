@@ -8,13 +8,13 @@ use super::base_model::BaseModel;
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct SessionSensor {
     #[serde(default)]
-    id: String,
-    session_id: String,
-    sensor_id: String,
+    id: i64,
+    session_id: i64,
+    sensor_id: i64,
 }
 
 impl SessionSensor {
-    pub fn new(id: String, session_id: String, sensor_id: String) -> Self {
+    pub fn new(id: i64, session_id: i64, sensor_id: i64) -> Self {
         SessionSensor {
             id,
             session_id,
@@ -22,19 +22,20 @@ impl SessionSensor {
         }
     }
 
+    #[allow(unused)]
     pub fn empty() -> Self {
-        Self::new(String::new(), String::new(), String::new())
+        Self::new(-1, -1, -1)
     }
 
-    pub fn get_id(&self) -> &str {
+    pub fn get_id(&self) -> &i64 {
         &self.id
     }
 
-    pub fn get_session_id(&self) -> &str {
+    pub fn get_session_id(&self) -> &i64 {
         &self.session_id
     }
 
-    pub fn get_sensor_id(&self) -> &str {
+    pub fn get_sensor_id(&self) -> &i64 {
         &self.sensor_id
     }
 }
@@ -45,7 +46,7 @@ impl BaseModel for SessionSensor {
         " Requires values \"session_id\": string and \"sensor_id\": string";
 
     fn is_valid(&self) -> bool {
-        !self.id.is_empty() && !self.session_id.is_empty() && !self.sensor_id.is_empty()
+        self.id >= 0 && self.session_id >= 0 && self.sensor_id >= 0
     }
 
     fn public_json(&self) -> String {
@@ -56,14 +57,14 @@ impl BaseModel for SessionSensor {
     }
 
     fn fill_from(&mut self, other: &Self) {
-        if self.id.is_empty() {
-            self.id = other.get_id().to_string()
+        if self.id == -1 {
+            self.id = other.get_id().clone()
         }
-        if self.session_id.is_empty() {
-            self.session_id = other.session_id.to_string()
+        if self.session_id == -1 {
+            self.session_id = other.session_id.clone()
         }
-        if self.sensor_id.is_empty() {
-            self.sensor_id = other.sensor_id.to_string()
+        if self.sensor_id == -1 {
+            self.sensor_id = other.sensor_id.clone()
         }
     }
 
@@ -82,7 +83,10 @@ impl BaseModel for SessionSensor {
     {
         |database: &dyn Database, subpath: &str, updated_session_sensor: Self| -> Result<Self> {
             match HttpPath::subsection(&subpath, 0) {
-                Some(id) => database.update_session_sensor(id, &updated_session_sensor),
+                Some(id) => match id.parse::<i64>() {
+                    Ok(id) => database.update_session_sensor(id, &updated_session_sensor),
+                    Err(e) => Err(format!("Failed to parse id to i64: {e}")),
+                },
                 None => Err(format!("Missing identifier in path: {subpath}")),
             }
         }
@@ -94,7 +98,10 @@ impl BaseModel for SessionSensor {
     {
         |database: &dyn Database, subpath: &str| -> Result<()> {
             match HttpPath::subsection(&subpath, 0) {
-                Some(id) => database.delete_session_sensor(id),
+                Some(id) => match id.parse::<i64>() {
+                    Ok(id) => database.delete_session_sensor(id),
+                    Err(e) => Err(format!("Failed to parse id to i64: {e}")),
+                },
                 None => Err(format!("Missing identifier in path: {subpath}")),
             }
         }

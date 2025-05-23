@@ -12,13 +12,13 @@ use super::base_model::BaseModel;
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct SessionSensorData {
     #[serde(default)]
-    id: Option<usize>,
+    id: Option<i64>,
     datetime: String,
     data_blob: Value,
 }
 
 impl SessionSensorData {
-    pub fn new(id: Option<usize>, datetime: String, data_blob: Value) -> Self {
+    pub fn new(id: Option<i64>, datetime: String, data_blob: Value) -> Self {
         SessionSensorData {
             id,
             datetime,
@@ -26,11 +26,12 @@ impl SessionSensorData {
         }
     }
 
+    #[allow(unused)]
     pub fn empty() -> Self {
         Self::new(None, String::new(), Value::Null)
     }
 
-    pub fn get_id(&self) -> &Option<usize> {
+    pub fn get_id(&self) -> &Option<i64> {
         &self.id
     }
 
@@ -46,7 +47,7 @@ impl SessionSensorData {
         database: &dyn Database,
         body: Option<serde_json::Value>,
     ) -> crate::http::HttpResponse {
-        let msg = Some(" Requires the values \"datapoints\": array [ { \"id\": string, \"datetime\": string, \"data_blob\": string }, ... ]");
+        let msg = Some(" Requires the values \"datapoints\": array [ { \"id\": i64, \"datetime\": string, \"data_blob\": string }, ... ]");
         match body {
             Some(json) => match json.get("datapoints") {
                 Some(json_value_array) => match json_value_array.as_array() {
@@ -56,10 +57,7 @@ impl SessionSensorData {
                         .collect::<std::result::Result<Vec<_>, _>>()
                     {
                         Ok(data) => match database.batch_session_sensor_data(&data) {
-                            Ok(_) => {
-                                println!("Data batch recieved to DB\n");
-                                HttpResponse::no_content()
-                            }
+                            Ok(_) => HttpResponse::no_content(),
                             Err(_) => HttpResponse::bad_request(msg.unwrap()),
                         },
                         Err(_) => HttpResponse::invalid_body(msg),
@@ -79,7 +77,7 @@ impl BaseModel for SessionSensorData {
         " Requires values \"datetime\": string and \"data_blob\": string";
 
     fn is_valid(&self) -> bool {
-        self.id.is_some() && !self.datetime.is_empty() && !self.data_blob.is_object()
+        self.id.is_some() && !self.datetime.is_empty() && self.data_blob.is_object()
     }
 
     fn public_json(&self) -> String {
@@ -122,11 +120,14 @@ impl BaseModel for SessionSensorData {
          -> Result<Self> {
             match HttpPath::subsection(&subpath, 0) {
                 Some(id) => match HttpPath::subsection(&subpath, 1) {
-                    Some(datetime) => database.update_session_sensor_datapoint(
-                        id,
-                        datetime,
-                        &updated_session_sensor_datapoint,
-                    ),
+                    Some(datetime) => match id.parse::<i64>() {
+                        Ok(id) => database.update_session_sensor_datapoint(
+                            id,
+                            datetime,
+                            &updated_session_sensor_datapoint,
+                        ),
+                        Err(e) => Err(format!("Failed to parse id to i64: {e}")),
+                    },
                     None => Err(format!("Missing identifier in path: {subpath}")),
                 },
                 None => Err(format!("Missing identifier in path: {subpath}")),
@@ -141,7 +142,10 @@ impl BaseModel for SessionSensorData {
         |database: &dyn Database, subpath: &str| -> Result<()> {
             match HttpPath::subsection(&subpath, 0) {
                 Some(id) => match HttpPath::subsection(&subpath, 1) {
-                    Some(datetime) => database.delete_session_sensor_datapoint(id, datetime),
+                    Some(datetime) => match id.parse::<i64>() {
+                    Ok(id) => database.delete_session_sensor_datapoint(id, datetime),
+                    Err(e) => Err(format!("Failed to parse id to i64: {e}")),
+                },
                     None => Err(format!("Missing identifier in path: {subpath}")),
                 },
                 None => Err(format!("Missing identifier in path: {subpath}")),

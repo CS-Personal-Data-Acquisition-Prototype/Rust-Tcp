@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{http::HttpPath, Database};
+use crate::{data::Database, http::HttpPath};
 
 type Result<T> = crate::Result<T>;
 
@@ -8,19 +8,20 @@ use super::base_model::BaseModel;
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct Sensor {
     #[serde(default)]
-    id: String,
+    id: i64,
     #[serde(rename = "type")]
     sensor_type: String,
 }
 
 impl Sensor {
-    pub fn new(id: String, sensor_type: String) -> Self {
+    pub fn new(id: i64, sensor_type: String) -> Self {
         Sensor { id, sensor_type }
     }
+    #[allow(unused)]
     pub fn empty() -> Self {
-        Self::new(String::new(), String::new())
+        Self::new(-1, String::new())
     }
-    pub fn get_id(&self) -> &str {
+    pub fn get_id(&self) -> &i64 {
         &self.id
     }
     pub fn get_sensor_type(&self) -> &str {
@@ -33,7 +34,7 @@ impl BaseModel for Sensor {
     const REQUIRED_VALUES: &'static str = " Requires value \"type\": string";
 
     fn is_valid(&self) -> bool {
-        !self.id.is_empty() && !self.sensor_type.is_empty()
+        self.id >= 0 && !self.sensor_type.is_empty()
     }
 
     fn public_json(&self) -> String {
@@ -45,8 +46,8 @@ impl BaseModel for Sensor {
     }
 
     fn fill_from(&mut self, other: &Self) {
-        if self.id.is_empty() {
-            self.id = other.get_id().to_string()
+        if self.id == -1 {
+            self.id = other.get_id().clone()
         }
         if self.sensor_type.is_empty() {
             self.sensor_type = other.get_sensor_type().to_string()
@@ -66,7 +67,10 @@ impl BaseModel for Sensor {
     {
         |database: &dyn Database, subpath: &str, updated_sensor: Self| -> Result<Self> {
             match HttpPath::subsection(&subpath, 0) {
-                Some(id) => database.update_sensor(id, &updated_sensor),
+                Some(id) => match id.parse::<i64>() {
+                    Ok(id) => database.update_sensor(id, &updated_sensor),
+                    Err(e) => Err(format!("Failed to parse id to i64: {e}")),
+                },
                 None => Err(format!("Missing identifier in path: {subpath}")),
             }
         }
@@ -78,7 +82,10 @@ impl BaseModel for Sensor {
     {
         |database: &dyn Database, subpath: &str| -> Result<()> {
             match HttpPath::subsection(&subpath, 0) {
-                Some(id) => database.delete_sensor(id),
+                Some(id) => match id.parse::<i64>() {
+                    Ok(id) => database.delete_sensor(id),
+                    Err(e) => Err(format!("Failed to parse id to i64: {e}")),
+                },
                 None => Err(format!("Missing identifier in path: {subpath}")),
             }
         }
