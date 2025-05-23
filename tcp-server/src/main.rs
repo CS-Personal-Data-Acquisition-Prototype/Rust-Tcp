@@ -100,15 +100,15 @@ fn main() {
                         Ok(db) => {
                             db.init();
                             db
-                        },
+                        }
                         Err(error) => {
                             println!("Failed to establish database connection. Error: {error}");
                             return;
-                        },
+                        }
                     },
                     None => panic!("Failed to convert database path to a string."),
                 }
-            },
+            }
             Err(e) => panic!("Failed to get current directory: {e}"),
         }
     };
@@ -186,15 +186,15 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                         .headers
                         .get(HttpHeaderType::ContentLength.as_str())
                     {
-                        Some(length) => {
-                            match length.trim().parse::<usize>() {
-                                Ok(num) => num,
-                                Err(e) => break Err(format!(
+                        Some(length) => match length.trim().parse::<usize>() {
+                            Ok(num) => num,
+                            Err(e) => {
+                                break Err(format!(
                                     "Failed to parse '{}' header to usize: {e}",
                                     HttpHeaderType::ContentLength.as_str()
                                 ))
                             }
-                        }
+                        },
                         None => {
                             println!(
                                 "No '{}' header found",
@@ -212,9 +212,7 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                         buffer.resize(buffer.len().max(request_len), 0u8);
 
                         // read rest of body not recieved [total_bytes, body_size - body_recieved]
-                        if let Err(e) = stream.read_exact(
-                            &mut buffer[total_bytes..request_len],
-                        ) {
+                        if let Err(e) = stream.read_exact(&mut buffer[total_bytes..request_len]) {
                             eprintln!(
                                 "Error encountered when reading '{body_size}' bytes from the stream: {e}"
                             )
@@ -240,7 +238,10 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
     println!("{total_bytes} total bytes read\n");
 
     let (origin, response) = match request_option {
-        Err(e) => (String::new(), HttpResponse::bad_request(&format!("Failed to parse request on the server: {e}"))),
+        Err(e) => (
+            String::new(),
+            HttpResponse::bad_request(&format!("Failed to parse request on the server: {e}")),
+        ),
         Ok(request) => {
             //construct response from possible pathways
             let gen_view =
@@ -521,21 +522,35 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
                             },
                             Some("session") => match HttpPath::subsection(&subpath, 1) {
                                 Some(session_id) => match session_id.parse::<i64>() {
-                                Ok(session_id) => match database.get_sessions_sensor_data(session_id) {
-                                        Ok(sessions_sensor_data) => {
-                                        //TODO: Remove this later as it temporary supports the data flow while waiting for Pi_Transmit
-                                        if session_id == 1 {
-                                            database.temp_session_id_solution();
-                                        }
-                                        HttpResponse::from_vec(json!({ "datapoints": sessions_sensor_data.iter().map(|session_sensor_data| {
+                                Ok(session_id) => match HttpPath::subsection(&subpath, 2) {
+                                    Some(datetime) => match database.get_sessions_sensor_data_after(session_id, datetime) {
+                                        Ok(session_sensor_data) => HttpResponse::from_vec(json!({
+                                            "datapoints": session_sensor_data.iter().map(|session_sensor_data| {
                                                 json!({
                                                     "id": session_sensor_data.get_id(),
                                                     "datetime": session_sensor_data.get_datetime(),
                                                     "data_blob": session_sensor_data.get_blob(),
                                                 })
-                                            }).collect::<Vec<_>>()}).to_string())
-                                    },
+                                            }).collect::<Vec<_>>()
+                                        }).to_string()),
                                         Err(_) => HttpResponse::json_404(&request.path.to_string()),
+                                    },
+                                    None => match database.get_sessions_sensor_data(session_id) {
+                                        Ok(sessions_sensor_data) => {
+                                            //TODO: Remove this later as it temporary supports the data flow while waiting for Pi_Transmit
+                                            if session_id == 1 {
+                                                database.temp_session_id_solution();
+                                            }
+                                            HttpResponse::from_vec(json!({ "datapoints": sessions_sensor_data.iter().map(|session_sensor_data| {
+                                                    json!({
+                                                        "id": session_sensor_data.get_id(),
+                                                        "datetime": session_sensor_data.get_datetime(),
+                                                        "data_blob": session_sensor_data.get_blob(),
+                                                    })
+                                                }).collect::<Vec<_>>()}).to_string())
+                                        },
+                                            Err(_) => HttpResponse::json_404(&request.path.to_string()),
+                                    },
                                 },
                                 Err(e) => HttpResponse::bad_request(&format!("Failed to parse id to i64: {e}")),
                                 },
@@ -582,8 +597,12 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
             )
         }
     };
-    
-    response.headers.lock().unwrap().insert(HttpHeaderType::AcAllowOrigin.as_str().to_owned(), origin);
+
+    response
+        .headers
+        .lock()
+        .unwrap()
+        .insert(HttpHeaderType::AcAllowOrigin.as_str().to_owned(), origin);
 
     //send generated response //TODO: add stream identifier for error message
     if let Err(error) = response.send(stream) {

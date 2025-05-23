@@ -279,6 +279,10 @@ impl Database for MockDatabase {
         Ok(MockDatabase::sessions_sensors_data())
     }
 
+    fn get_sessions_sensor_data_after(&self, _session_id: i64, _datetime: &str) -> Result<Vec<SessionSensorData>> {
+        Ok(MockDatabase::sessions_sensors_data())
+    }
+
     fn get_session_sensor_data(&self, session_sensor_id: i64) -> Result<Vec<SessionSensorData>> {
         Ok(MockDatabase::sessions_sensors_data()
             .iter()

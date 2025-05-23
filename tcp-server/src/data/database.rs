@@ -57,6 +57,11 @@ pub trait Database {
     ) -> Result<Vec<SessionSensorData>>;
     fn get_sessions_sensors_data(&self) -> Result<Vec<SessionSensorData>>;
     fn get_sessions_sensor_data(&self, session_id: i64) -> Result<Vec<SessionSensorData>>;
+    fn get_sessions_sensor_data_after(
+        &self,
+        session_id: i64,
+        datetime: &str,
+    ) -> Result<Vec<SessionSensorData>>;
     fn get_session_sensor_data(&self, session_sensor_id: i64) -> Result<Vec<SessionSensorData>>;
     fn get_session_sensor_datapoint(
         &self,
@@ -69,9 +74,5 @@ pub trait Database {
         datetime: &str,
         updated_session_sensor_datapoint: &SessionSensorData,
     ) -> Result<SessionSensorData>;
-    fn delete_session_sensor_datapoint(
-        &self,
-        session_id: i64,
-        datetime: &str,
-    ) -> Result<()>;
+    fn delete_session_sensor_datapoint(&self, session_id: i64, datetime: &str) -> Result<()>;
 }

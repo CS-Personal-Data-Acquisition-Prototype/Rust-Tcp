@@ -1,4 +1,5 @@
 use crate::models::{Sensor, Session, SessionSensor, SessionSensorData, User};
+use chrono::NaiveDateTime;
 use rusqlite::{params, params_from_iter, Connection};
 
 use super::Database;
@@ -533,15 +534,20 @@ impl Database for SqliteDatabase {
                     .join(", ")
             );
 
-            let params = chunk.iter()
-                 .flat_map(|data| [
-                    Box::new(data.get_id().unwrap_or(-1)) as Box<dyn rusqlite::ToSql>,
-                    Box::new(data.get_datetime()),
-                    Box::new(data.get_blob().to_string()),
-                ])
+            let params = chunk
+                .iter()
+                .flat_map(|data| {
+                    [
+                        Box::new(data.get_id().unwrap_or(-1)) as Box<dyn rusqlite::ToSql>,
+                        Box::new(data.get_datetime()),
+                        Box::new(data.get_blob().to_string()),
+                    ]
+                })
                 .collect::<Vec<Box<dyn rusqlite::ToSql>>>();
 
-            self.connection.execute(&sql, params_from_iter(params)).map_err(|e| e.to_string())?;
+            self.connection
+                .execute(&sql, params_from_iter(params))
+                .map_err(|e| e.to_string())?;
         }
 
         Ok(data_blobs.clone())
@@ -575,7 +581,7 @@ impl Database for SqliteDatabase {
         Ok(session_sensor_data_vec)
     }
 
-    // Returns all rows from Session_Sensor_Data where session_sensorID is in Session_Sensor where sessionID matches
+    // Returns all rows from Session_Sensor_Data where sessionID matches
     fn get_sessions_sensor_data(&self, session_id: i64) -> Result<Vec<SessionSensorData>> {
         let mut statement = self
             .connection
@@ -605,7 +611,49 @@ impl Database for SqliteDatabase {
         Ok(session_sensor_data_vec)
     }
 
-    // Returns all rows from Session_Sensor_Data where session_sensorID matches
+    // Returns all rows from Session_Sensor_Data where sessionID matches and datetime is after the passed value
+    fn get_sessions_sensor_data_after(
+        &self,
+        session_id: i64,
+        datetime: &str,
+    ) -> Result<Vec<SessionSensorData>> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT sessionID, datetime, data_blob FROM Session_Sensor_Data WHERE sessionID = ?1",
+            )
+            .map_err(|e| e.to_string())?;
+
+        let session_sensor_data_itr = statement
+            .query_map(params![session_id], |row| {
+                let id: i64 = row.get(0)?;
+                let datetime: String = row.get(1)?;
+                let data_blob: String = row.get(2)?;
+                Ok(SessionSensorData::new(
+                    Some(id),
+                    datetime,
+                    serde_json::from_str(&data_blob).unwrap_or_default(),
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+
+        let filter_time = NaiveDateTime::parse_from_str(datetime, "%Y-%m-%dT%H:%M:%S%.f")
+            .map_err(|e| e.to_string())?;
+        let mut session_sensor_data_vec = Vec::new();
+        for session_sensor_data in session_sensor_data_itr {
+            let data = session_sensor_data.map_err(|e| e.to_string())?;
+            if NaiveDateTime::parse_from_str(data.get_datetime(), "%Y-%m-%dT%H:%M:%S%.f")
+                .map_err(|e| e.to_string())?
+                > filter_time
+            {
+                session_sensor_data_vec.push(data);
+            }
+        }
+
+        Ok(session_sensor_data_vec)
+    }
+
+    // Returns all rows from Session_Sensor_Data where session_id from Session_Sensor matches session_sensorID
     fn get_session_sensor_data(&self, session_sensor_id: i64) -> Result<Vec<SessionSensorData>> {
         let mut statement = self
             .connection
@@ -635,7 +683,7 @@ impl Database for SqliteDatabase {
         Ok(session_sensor_data_vec)
     }
 
-    // Returns a single datapoint that matches a session_sensor_id and datetime
+    // Returns a single datapoint that matches a session_id and datetime
     fn get_session_sensor_datapoint(
         &self,
         session_id: i64,
