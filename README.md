@@ -13,6 +13,8 @@ to utilize an SQLite database the crate must be built and ran with `--features s
 3. To run the project in release mode use the command:
 `cargo run --release [--features sql]`
 
+4. To see all the avaliable request and endpoint information, visit the [API Specification Document](https://docs.google.com/document/d/1tziVzWEAI0OJFBhgnmJrV8Y4_IoeSf7E4C9q4xEc57g/edit?usp=sharing).
+
 ## Configuration
 Add the configuration file `config.toml` in `src` directory, the config doesn't have any headers and the and default values look like this:
 ```toml
