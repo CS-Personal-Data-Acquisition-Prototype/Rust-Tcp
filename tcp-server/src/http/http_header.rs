@@ -79,7 +79,7 @@ pub struct HttpHeader {
 impl HttpHeader {
     pub const AC_ALLOWED_METHODS: &'static str = "GET, POST, PATCH, DELETE, OPTIONS";
     pub const AC_MAX_AGE: &'static str = "86400"; // Cache for 24 hours
-    pub const AC_ORIGINS: [&str; 3] = ["http://localhost:8080", "http://localhost.:8080", "http://127.0.0.1:8080"];
+    pub const AC_ORIGINS: [&str; 3] = ["http://localhost.:8080", "http://localhost:8080", "http://127.0.0.1:8080"];
 
     pub fn new() -> Self {
         HttpHeader {

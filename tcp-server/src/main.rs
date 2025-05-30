@@ -250,7 +250,7 @@ fn handle_connection(database: &dyn Database, mut stream: TcpStream) {
             (
                 match request.headers.get(HttpHeaderType::Origin.as_str()) {
                     Some(origin) => origin.to_string(),
-                    None => String::new(),
+                    None => HttpHeader::AC_ORIGINS.get(0).unwrap_or(&"").to_string(),
                 },
                 match request.path.clone() {
                     HttpPath::Index(_subpath) => gen_view("index.html"),
