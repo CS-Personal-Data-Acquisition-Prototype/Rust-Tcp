@@ -1,0 +1,2 @@
+database_file = "data_acquisition.db"           # name of local database file
+local_addr = "0.0.0.0:7878"                     # address to listen on for local server
