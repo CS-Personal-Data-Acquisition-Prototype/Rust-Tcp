@@ -7,7 +7,7 @@ Its designed to be multithreaded and hosted through AWS to enable future scalabi
 To see detailed information on all the avaliable request and endpoint information, visit the [API Specification Document](https://cs-personal-data-acquisition-prototype.github.io/api_spec/).
 
 ### Features
-- Thread safe server with RESTful design principles, ready for multithreading
+- Thread safe server with RESTful design principles that is ready for multithreading
 - SQLite3 integrated database
 - Responses can be generated from files
 - Polymorphic and type-agnostic design utilizing dependency injecting
