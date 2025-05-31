@@ -7,19 +7,19 @@ Its designed to be multithreaded and hosted through AWS to enable future scalabi
 To see detailed information on all the avaliable request and endpoint information, visit the [API Specification Document](https://cs-personal-data-acquisition-prototype.github.io/api_spec/).
 
 ### Features
-- Thread safe server, ready for multithreading with RESTful design principles
+- Thread safe server with RESTful design principles, ready for multithreading
 - SQLite3 integrated database
 - Responses can be generated from files
 - Polymorphic and type-agnostic design utilizing dependency injecting
    - Database integrations can be expanded by implementing the `Database` trait and abstract functions
    - Chosen database format is injected and initialized on program start
    - All model functionality is implemented through the `BaseModel` trait and abstract functions
-   - Models can be directly parsed into HttpResponse through implementing `BaseModel::public_json()`
-- Raw requests deserialized to strongly typed HttpRequest struct
+   - Models are directly parsed into `HttpResponse` by calling `BaseModel::public_json()`
+- Raw requests deserialized to strongly typed `HttpRequest` struct
 - Request headers pre-parsed to read exact body from stream
 - Compiler enforced route handling with respect to method, headers, path, and body
-- Routing returns initialized HttpResponse struct
-- HttpHeaders utilizes a factory builder pattern to support HttpResponse functionality
+- Routing returns initialized `HttpResponse` struct
+- `HttpHeader` utilizes a factory builder pattern to support `HttpResponse` functionality
 
 ### Libraries Used
 ![url](https://img.shields.io/badge/url-2.5.3-blue)
@@ -39,20 +39,20 @@ To see detailed information on all the avaliable request and endpoint informatio
    - Cargo.toml
    - src/
       - config.toml - The programs configuration file
-      - main.rs - Holds the entrypoint as well as the client handling and request routing  
+      - main.rs - Holds the entrypoint as well as the client handling and request routing logic
       - data/
          - mod.rs
          - database.rs - Holds the `Database` trait implementation
          - mock_database.rs - Holds a mock `Database` implementation for testing
-         - sqlite_database.rs - Holds a SQLite `Database` implementation for production
+         - sqlite_database.rs - Holds the SQLite `Database` implementation for production
          - test_sqlite_db.rs - Holds testing functionality for `sqlite_database.rs`
       - http/
          - mod.rs
          - http_header.rs - Holds the `HttpStatus`, `HttpHeaderType`, and `HttpHeader` struct implementations
          - http_method.rs - Holds the `HttpMethod` struct implementation
          - http_path.rs - Holds the `HttpPath` struct implementation
-         - http_request.rs - Holds the `HttpRequest` struct implementation along with its byte buffer parsing logic
-         - http_response.rs - Holds the `HttpResponse` struct implementation along with sending logic
+         - http_request.rs - Holds the `HttpRequest` struct implementation with byte buffer parsing logic
+         - http_response.rs - Holds the `HttpResponse` struct implementation with stream sending logic
       - models/
          - mod.rs
          - base_model.rs - Holds the `BaseModel` trait implementation
@@ -90,10 +90,9 @@ To see detailed information on all the avaliable request and endpoint informatio
 
 5. Run the program by following the [Usage](#usage) section
 
-6. Troubleshoot common errors in the [Troubleshooting](#troubleshooting) section
-
 ## Configuration
-The config doesn't have any headers and the and default values look like the following:
+The configuration file doesn't have any headers.<br>
+The default values look like the following:
 ```toml
 database_file = "data_acquisition.db"   # name of local database file
 local_addr = "0.0.0.0:7878"             # local address to listen for TCP requests on
@@ -113,9 +112,9 @@ To utilize an SQLite database the crate must be built and ran with `--features s
 `cargo run --release [--features sql]`
 
 ## Future Work
-1. User authentication, utilizing existing session cookie infastructure
-2. Multithread with pooling as demand increases, existing code is already thread-safe
-3. Parsing request url query string to support API query parameters
+- User authentication, utilizing existing session cookie infastructure
+- Multithread with pooling as demand increases, existing code is already thread-safe
+- Parsing request url query string to support API query parameters
 
 # License Notice
 To apply the Apache License to your work, attach the following boilerplate notice. The text should be enclosed in the appropriate comment syntax for the file format. We also recommend that a file or class name and description of purpose be included on the same "printed page" as the copyright notice for easier identification within third-party archives.
